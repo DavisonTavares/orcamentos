@@ -1,0 +1,783 @@
+{% extends "base.html" %}
+{% load static %}
+
+{% block title %}Editar Orçamento - Mundo Kids{% endblock %}
+
+{% block content %}
+<style>
+    :root {
+            --primary: {{ empresa_theme.primary }};
+            --secondary: {{ empresa_theme.secondary }};
+            --accent: {{ empresa_theme.accent }};
+            --light: #F8FAFC;
+            --dark: #1E293B;
+            --success: #10B981;
+        }    
+
+    body {
+        font-family: 'Poppins', sans-serif;
+        background: linear-gradient(135deg, #f5f7ff 0%, #e6f2ff 100%);
+        color: var(--dark);
+        min-height: 100vh;
+    }
+
+    .navbar-brand {
+        font-weight: 700;
+        color: var(--primary);
+    }
+
+    .form-container {
+        background: white;
+        border-radius: 20px;
+        box-shadow: 0 10px 30px rgba(36, 99, 235, 0.15);
+        overflow: hidden;
+        margin: 0rem auto;
+    }
+
+    .form-header {
+        background: linear-gradient(120deg, var(--primary), var(--secondary));
+        color: white;
+        padding: 25px 30px;
+        text-align: center;
+    }
+
+    .form-body {
+        padding: 30px;
+    }
+
+    .form-section {
+        margin-bottom: 30px;
+        padding-bottom: 20px;
+        border-bottom: 1px solid #e2e8f0;
+    }
+
+    .section-title {
+        color: var(--primary);
+        font-weight: 600;
+        margin-bottom: 20px;
+        position: relative;
+        padding-left: 15px;
+    }
+
+    .section-title::before {
+        content: '';
+        position: absolute;
+        left: 0;
+        top: 50%;
+        transform: translateY(-50%);
+        width: 6px;
+        height: 24px;
+        background: var(--primary);
+        border-radius: 3px;
+    }
+
+    .form-control,
+    .form-select {
+        border-radius: 12px;
+        padding: 12px 16px;
+        border: 1px solid #e2e8f0;
+        transition: all 0.3s;
+    }
+
+    .form-control:focus,
+    .form-select:focus {
+        border-color: var(--primary);
+        box-shadow: 0 0 0 3px rgba(36, 99, 235, 0.2);
+    }
+
+    .item-card {
+        background: var(--light);
+        border-radius: 12px;
+        padding: 15px;
+        margin-bottom: 15px;
+        border: 1px solid #e2e8f0;
+        transition: all 0.3s;
+    }
+
+    .item-card:hover {
+        border-color: var(--primary);
+        box-shadow: 0 5px 15px rgba(36, 99, 235, 0.1);
+    }
+
+    .quantity-input {
+        width: 80px;
+        text-align: center;
+        border-radius: 8px;
+        border: 1px solid #e2e8f0;
+        padding: 8px;
+    }
+
+    .btn-primary {
+        background: linear-gradient(120deg, var(--primary), var(--secondary));
+        border: none;
+        border-radius: 12px;
+        padding: 12px 24px;
+        font-weight: 600;
+        transition: all 0.3s;
+    }
+
+    .btn-primary:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 5px 15px rgba(36, 99, 235, 0.3);
+    }
+
+    .btn-outline-primary {
+        border-radius: 12px;
+        padding: 12px 24px;
+        font-weight: 600;
+    }
+
+    .summary-card {
+        background: var(--light);
+        border-radius: 15px;
+        padding: 20px;
+        position: sticky;
+        top: 20px;
+    }
+
+    .summary-item {
+        display: flex;
+        justify-content: space-between;
+        padding: 10px 0;
+        border-bottom: 1px dashed #e2e8f0;
+    }
+
+    .total-price {
+        font-size: 1.5rem;
+        font-weight: 700;
+        color: var(--primary);
+    }
+
+    .discount-badge {
+        background: var(--accent);
+        color: white;
+        padding: 4px 10px;
+        border-radius: 20px;
+        font-size: 0.8rem;
+        font-weight: 500;
+    }
+
+    .item-badge {
+        background: var(--primary);
+        color: white;
+        padding: 4px 8px;
+        border-radius: 6px;
+        font-size: 0.75rem;
+        font-weight: 500;
+    }
+
+    .search-box {
+        position: relative;
+    }
+
+    .search-box i {
+        position: absolute;
+        left: 15px;
+        top: 50%;
+        transform: translateY(-50%);
+        color: #94a3b8;
+    }
+
+    .search-box input {
+        padding-left: 45px;
+    }
+
+    .toast-container {
+        position: fixed;
+        bottom: 20px;
+        right: 20px;
+        z-index: 1050;
+    }
+
+    @media (max-width: 768px) {
+        .form-container {
+            margin: 1rem;
+        }
+
+        .form-body {
+            padding: 20px;
+        }
+    }
+</style>
+
+<!-- Conteúdo Principal -->
+<div class="container py-4">
+    <div class="row">
+        <div class="col-lg-8">
+            <div class="form-container">
+                <div class="form-header">
+                    <h2><i class="fas fa-edit me-2"></i> Editar Orçamento #{{ orcamento.id }}</h2>
+                    <p class="mb-0">Atualize os dados do orçamento abaixo</p>
+                </div>
+
+                <div class="form-body">
+                    <!-- Seção Cliente -->
+                    <div class="form-section">
+                        <h4 class="section-title">Dados do Cliente</h4>
+                        <div class="row">
+                            <div class="col-md-6 mb-3">
+                                <label class="form-label">Selecionar Cliente</label>
+                                <input 
+                                    type="text"
+                                    class="form-control"
+                                    id="nome"
+                                    value="{{ orcamento.cliente.nome }}"
+                                    disabled>                                    
+                            </div>   
+                            <div class="col-md-6 mb-3">
+                                <label class="form-label">Telefone</label>
+                                <input type="text" name="telefone" 
+                                    class="form-control disabled"
+                                    placeholder="(83) 9 9999-9999" 
+                                    id="telefone"
+                                    disabled
+                                    value="{{ orcamento.cliente.telefone }}">
+                            </div>                         
+                        </div>
+
+                        <div class="row">                  
+                            <div class="col-md-12 mb-3">
+                                <label class="form-label">Endereço</label>
+                                <input type="text" name="endereco" 
+                                    class="form-control" 
+                                    placeholder="Rua, Número, Bairro, Cidade - Estado, CEP" 
+                                    id="endereco"
+                                    value="{{ orcamento.endereco }}">
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Seção Itens -->
+                    <div class="form-section">
+                        <div class="d-flex justify-content-between align-items-center mb-3">
+                            <h4 class="section-title mb-0">Itens do Orçamento</h4>
+                            <div class="search-box" style="width: 250px;">
+                                <i class="fas fa-search"></i>
+                                <input type="text" class="form-control" id="buscaItens"
+                                    placeholder="Buscar brinquedos...">
+                            </div>
+                        </div>
+
+                        <div class="mb-4" id="listaItens">
+                           <!-- Itens serão renderizados aqui via JavaScript -->
+                            {% if itens|length == 0 %}
+                            <p class="text-muted">Nenhum item disponível no momento.</p>
+                            {% endif %}
+                        </div>
+                    </div>
+
+                    <!-- Seção Desconto e Observações -->
+                    <div class="form-section mb-0 col-md-12">
+                        <div class="row">
+                            <div class="col-md-6 mb-4">
+                                <h4 class="section-title">Desconto</h4>
+                                <div class="d-flex align-items-center">
+                                    <input type="number" class="form-control me-2" id="descontoInput" 
+                                        placeholder="0" min="0" max="100" style="width: 100px;"
+                                        value="{{ orcamento.desconto_geral }}">
+                                    <span class="fw-medium">% de desconto</span>
+                                </div>
+                                <div class="mt-2">
+                                    <span class="discount-badge">
+                                        <i class="fas fa-tag me-1"></i> Desconto aplicado ao total
+                                    </span>
+                                </div>
+                            </div>
+
+                            <div class="col-md-6 mb-4">
+                                <h4 class="section-title">Data do Evento</h4>
+                                <input type="date" class="form-control" id="dataEvento" 
+                                    value="{{ orcamento.data_evento|date:'Y-m-d' }}">
+                                <div class="form-text">Selecione a data prevista para o evento</div>
+                            </div>                          
+                        </div>
+                        <div class="row">
+                            <div class="col-md-6 mb-4">
+                                <h4 class="section-title">Hora do Evento</h4>
+                                <input type="time" class="form-control" id="horaEvento" 
+                                    value="{{ orcamento.hora_evento|time:'H:i'|default:'16:00' }}">
+                                <div class="form-text">Informe a hora prevista para o evento</div>
+                            </div>
+                            <div class="col-md-6 mb-4">
+                                <h4 class="section-title">Duração do Evento</h4>
+                                <select class="form-select" id="duracaoEvento">
+                                    <option value="1" {% if orcamento.periodo_evento == "1" %}selected{% endif %}>1 hora</option>
+                                    <option value="2" {% if orcamento.periodo_evento == "2" %}selected{% endif %}>2 horas</option>
+                                    <option value="3" {% if orcamento.periodo_evento == "3" or not orcamento.periodo_evento %}selected{% endif %}>3 horas</option>
+                                    <option value="4" {% if orcamento.periodo_evento == "4" %}selected{% endif %}>4 horas</option>
+                                    <option value="5" {% if orcamento.periodo_evento == "5" %}selected{% endif %}>5 horas</option>
+                                    <option value="6" {% if orcamento.periodo_evento == "6" %}selected{% endif %}>6 horas</option>
+                                </select>
+                                <div class="form-text">Informe a duração prevista para o evento</div>
+                            </div>
+                        </div>
+                        <div class="row">
+                            <div class="col-md-6 mb-4">
+                                <h4 class="section-title">Valor Adicional</h4>
+                                <input type="number" class="form-control" id="valorAdicionalInput" 
+                                    placeholder="0,00" step="0.5" min="0"
+                                    value="{{ orcamento.valor_adicional }}">
+                                <div class="form-text">Informe um valor adicional, se necessário (ex: deslocamento, taxa extra, etc.)</div>
+                            </div>
+                            <div class="col-md-6 mb-4">
+                                <h4 class="section-title">Tipo do Evento</h4>
+                                <select class="form-select" id="tipoEventoSelect">
+                                    <option value="Aniversário" {% if orcamento.tipo_evento == "Aniversário" %}selected{% endif %}>Aniversário</option>
+                                    <option value="Casamento" {% if orcamento.tipo_evento == "Casamento" %}selected{% endif %}>Casamento</option>
+                                    <option value="Corporativo" {% if orcamento.tipo_evento == "Corporativo" %}selected{% endif %}>Corporativo</option>
+                                    <option value="Evento Público (com estimativa de público)" {% if orcamento.tipo_evento == "Evento Público (com estimativa de público)" %}selected{% endif %}>Evento Público (com estimativa de público)</option>
+                                    <option value="Evento Público (sem estimativa de público)" {% if orcamento.tipo_evento == "Evento Público (sem estimativa de público)" %}selected{% endif %}>Evento Público (sem estimativa de público)</option>
+                                    <option value="Outro" {% if orcamento.tipo_evento == "Outro" %}selected{% endif %}>Outro</option>
+                                </select>
+                                <div class="form-text">Selecione o tipo de evento</div>
+                            </div>
+                        </div>
+                        <div class="col-md-12 mb-3">
+                            <h4 class="section-title">Valor Pago</h4>
+                            <input type="number" name="valor_pago" 
+                                class="form-control" 
+                                placeholder="0,00" 
+                                id="valorPagoInput"
+                                value="{{ orcamento.valor_pago|default:0 }}" step="0.5" min="0">
+                            <div class="form-text">Informe o valor já pago pelo cliente, se houver</div>
+                        </div>
+
+                        <div class="col-md-12 mb-3">
+                            <h4 class="section-title">Custo Operacional</h4>
+                            <input type="number" name="custo_operacional" 
+                                class="form-control" 
+                                placeholder="0,00" 
+                                id="custoOperacionalInput"
+                                value="{{ orcamento.custo_operacional|default:0 }}" step="0.01" min="0">
+                            <div class="form-text">Informe o custo operacional do evento (ex: combustível, alimentação, etc.)</div>
+                        </div>
+
+                        <h4 class="section-title">Observações</h4>
+                        <textarea class="form-control" id="observacoes" rows="4"
+                            placeholder="Informações adicionais, endereço do evento, restrições, etc.">{{ orcamento.observacoes }}</textarea>
+                    </div>
+
+                    <!-- Botões de Ação -->
+                    <div class="d-flex gap-3 justify-content-end pt-3">
+                        <a href="{% url 'orcamentos:detalhes_orcamento' orcamento_id=orcamento.id %}" class="btn btn-outline-secondary" id="cancelarBtn">
+                            <i class="fas fa-times me-2"></i>Cancelar
+                        </a>
+                        <button type="button" class="btn btn-primary" id="salvarBtn">
+                            <i class="fas fa-save me-2"></i>Atualizar Orçamento
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Resumo do Orçamento -->
+        <div class="col-lg-4">
+            <div class="summary-card">
+                <h4 class="section-title">Resumo do Orçamento</h4>
+
+                <div id="itensResumo">
+                    <!-- Itens do resumo serão adicionados dinamicamente -->
+                </div>
+
+                <div class="summary-item">
+                    <span>Subtotal</span>
+                    <span class="fw-medium" id="subtotal">R$ 0,00</span>
+                </div>
+
+                <div class="summary-item">
+                    <span>Desconto (<span id="percentualDesconto">0</span>%)</span>
+                    <span class="fw-medium text-success" id="valorDesconto">- R$ 0,00</span>
+                </div>
+
+                <div class="summary-item">
+                    <span>Valor Adicional</span>
+                    <span class="fw-medium" id="valorAdicional">R$ 0,00</span>
+                </div>
+
+                <div class="summary-item">
+                    <span>Valor Pago</span>
+                    <span class="fw-medium text-success" id="valorPago">- R$ 0,00</span>
+                </div>
+
+                <div class="summary-item pt-3">
+                    <span class="fw-bold">Total</span>
+                    <span class="total-price" id="total">R$ 0,00</span>
+                </div>
+
+                <div class="mt-4">
+                    <button type="button" class="btn btn-outline-primary w-100 mb-3" id="visualizarPdfBtn">
+                        <i class="fas fa-file-pdf me-2"></i>Pré-visualizar PDF
+                    </button>
+
+                    <button type="button" class="btn btn-primary w-100" id="enviarClienteBtn">
+                        <i class="fas fa-paper-plane me-2"></i>Enviar para Cliente
+                    </button>
+                </div>
+
+                <div class="mt-4 p-3 bg-light rounded">
+                    <h6 class="fw-bold mb-2">💡 Dica Rápida</h6>
+                    <p class="small mb-0">Você pode adicionar descontos percentuais no campo dedicado. Lembre-se de incluir todas as informações do evento nas observações.</p>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Container para notificações toast -->
+<div class="toast-container"></div>
+
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+<script>
+    // Dados dos itens disponíveis
+    const itensDisponiveis = {{ itens_json|safe }};
+    
+    // Itens já selecionados no orçamento
+    const itensSelecionadosInicial = {{ itens_selecionados|safe }};
+
+    // Estado da aplicação
+    const state = {
+        itensSelecionados: [],
+        desconto: {{ orcamento.desconto_geral|default:0 }},
+        cliente: null
+    };
+
+    // Formatar valor em Reais
+    function formatarMoeda(valor) {
+        return new Intl.NumberFormat('pt-BR', {
+            style: 'currency',
+            currency: 'BRL'
+        }).format(valor);
+    }
+
+    // Função para mostrar notificações toast
+    function mostrarToast(mensagem, tipo = 'success') {
+        const toastContainer = document.querySelector('.toast-container');
+        const toastId = 'toast-' + Date.now();
+
+        const toastHTML = `
+            <div id="${toastId}" class="toast align-items-center text-white bg-${tipo} border-0" role="alert">
+                <div class="d-flex">
+                    <div class="toast-body">
+                        ${mensagem}
+                    </div>
+                    <button type="button" class="btn-close btn-close-white me-2 m-auto" data-bs-dismiss="toast"></button>
+                </div>
+            </div>
+        `;
+
+        toastContainer.insertAdjacentHTML('beforeend', toastHTML);
+
+        const toastElement = document.getElementById(toastId);
+        const toast = new bootstrap.Toast(toastElement);
+        toast.show();
+
+        // Remover o toast do DOM após ser escondido
+        toastElement.addEventListener('hidden.bs.toast', function () {
+            toastElement.remove();
+        });
+    }
+
+    // Renderizar itens disponíveis
+    function renderizarItens() {
+        const listaItens = document.getElementById('listaItens');
+        const termoBusca = document.getElementById('buscaItens').value.toLowerCase();
+
+        // Filtrar itens com base na busca
+        const itensFiltrados = itensDisponiveis.filter(item =>
+            item.nome.toLowerCase().includes(termoBusca) ||
+            item.descricao.toLowerCase().includes(termoBusca)
+        );
+
+        listaItens.innerHTML = '';
+
+        itensFiltrados.forEach(item => {
+            const itemSelecionado = state.itensSelecionados.find(i => i.id === item.id);
+            const quantidade = itemSelecionado ? itemSelecionado.quantidade : 0;
+
+            const itemHTML = `
+                <div class="item-card" data-item-id="${item.id}">
+                    <div class="d-flex justify-content-between align-items-center">
+                        <div>
+                            <h6 class="mb-1">${item.nome}</h6>
+                            <p class="mb-0 text-muted">${item.descricao}</p>
+                            <div class="mt-2">
+                                <span class="item-badge ${item.disponivel ? 'bg-primary' : 'bg-secondary'}">
+                                    ${item.disponivel ? 'Disponível' : 'Indisponível'}
+                                </span>
+                                <span class="ms-2 fw-bold text-primary">${formatarMoeda(item.preco)}</span>
+                            </div>
+                        </div>
+                        <div class="d-flex align-items-center">
+                            <button class="btn btn-sm btn-outline-secondary" onclick="alterarQuantidade(${item.id}, -1)" ${quantidade === 0 ? 'disabled' : ''}>
+                                <i class="fas fa-minus"></i>
+                            </button>
+                            <input type="number" class="quantity-input mx-2" value="${quantidade}" min="0" 
+                                onchange="alterarQuantidade(${item.id}, 0, this.value)" ${!item.disponivel ? 'disabled' : ''}>
+                            <button class="btn btn-sm btn-outline-primary" onclick="alterarQuantidade(${item.id}, 1)" ${!item.disponivel ? 'disabled' : ''}>
+                                <i class="fas fa-plus"></i>
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            `;
+
+            listaItens.insertAdjacentHTML('beforeend', itemHTML);
+        });
+    }
+
+    // Alterar quantidade de um item
+    function alterarQuantidade(itemId, modificador, valorDireto = null) {
+        const itemIndex = state.itensSelecionados.findIndex(item => item.id === itemId);
+        const item = itensDisponiveis.find(i => i.id === itemId);
+
+        let novaQuantidade;
+
+        if (valorDireto !== null) {
+            novaQuantidade = parseInt(valorDireto) || 0;
+        } else {
+            const quantidadeAtual = itemIndex >= 0 ? state.itensSelecionados[itemIndex].quantidade : 0;
+            novaQuantidade = Math.max(0, quantidadeAtual + modificador);
+        }
+
+        if (novaQuantidade > 0) {
+            if (itemIndex >= 0) {
+                state.itensSelecionados[itemIndex].quantidade = novaQuantidade;
+            } else {
+                state.itensSelecionados.push({
+                    id: itemId,
+                    nome: item.nome,
+                    preco: item.preco,
+                    quantidade: novaQuantidade
+                });
+            }
+        } else if (itemIndex >= 0) {
+            state.itensSelecionados.splice(itemIndex, 1);
+        }
+
+        renderizarItens();
+        atualizarResumo();
+    }
+
+    // Atualizar resumo do orçamento
+    function atualizarResumo() {
+        const itensResumo = document.getElementById('itensResumo');
+        const subtotalElement = document.getElementById('subtotal');
+        const valorAdicionalElement = document.getElementById('valorAdicional');
+        const percentualDescontoElement = document.getElementById('percentualDesconto');
+        const valorDescontoElement = document.getElementById('valorDesconto');
+        const totalElement = document.getElementById('total');
+        const valorPagoElement = document.getElementById('valorPago');
+        const valorPagoInput = parseFloat(document.getElementById('valorPagoInput').value) || 0;
+        const custoOperacionalInput = parseFloat(document.getElementById('custoOperacionalInput').value) || 0;
+        const quantidadeItens = state.itensSelecionados.reduce((sum, item) => sum + item.quantidade, 0);
+
+
+        // Calcular subtotal
+        const subtotal = state.itensSelecionados.reduce((total, item) => total + (item.preco * item.quantidade), 0);
+
+        // Calcular desconto
+        const valorDesconto = subtotal * (state.desconto / 100);
+        const total = subtotal - valorDesconto + (parseFloat(document.getElementById('valorAdicionalInput').value) || 0) - valorPagoInput;
+
+        // Atualizar itens no resumo
+        itensResumo.innerHTML = '';
+        state.itensSelecionados.forEach(item => {
+            const itemHTML = `
+                <div class="summary-item">
+                    <span>${item.nome} (${item.quantidade}x)</span>
+                    <span class="fw-medium">${formatarMoeda(item.preco * item.quantidade)}</span>
+                </div>
+            `;
+            itensResumo.insertAdjacentHTML('beforeend', itemHTML);
+        });
+
+        // Atualizar valores
+        if (quantidadeItens > 0 && custoOperacionalInput == 0) {            
+            document.getElementById('custoOperacionalInput').value = quantidadeItens * 50;
+            mostrarToast('Custo operacional atualizado automaticamente com base na quantidade de itens.', 'info');
+        }else {
+            mostrarToast('Lembre-se de atualizar o custo operacional se necessário.', 'info');
+        }
+        subtotalElement.textContent = formatarMoeda(subtotal);
+        percentualDescontoElement.textContent = state.desconto;
+        valorAdicionalElement.textContent = formatarMoeda(parseFloat(document.getElementById('valorAdicionalInput').value) || 0);
+        valorDescontoElement.textContent = `- ${formatarMoeda(valorDesconto)}`;
+        valorPagoElement.textContent = `- ${formatarMoeda(valorPagoInput)}`;
+        totalElement.textContent = formatarMoeda(total);
+    }
+
+    // Salvar orçamento
+    function salvarOrcamento() {
+        // Validar dados
+        if (state?.itensSelecionados?.length === 0) {
+            mostrarToast('Selecione pelo menos um item para o orçamento', 'danger');
+            return;
+        }
+
+        const dataEvento = document.getElementById('dataEvento').value;
+        if (!dataEvento) {
+            mostrarToast('Informe a data do evento', 'danger');
+            return;
+        }
+
+        const horaEvento = document.getElementById('horaEvento').value;
+        if (!horaEvento) {
+            mostrarToast('Informe a hora do evento', 'danger');
+            return;
+        }
+
+        const duracaoEvento = document.getElementById('duracaoEvento').value;
+        if (!duracaoEvento) {
+            mostrarToast('Informe a duração do evento', 'danger');
+            return;
+        }
+
+        const tipoEvento = document.getElementById('tipoEventoSelect').value;
+        if (!tipoEvento) {
+            mostrarToast('Informe o tipo do evento', 'danger');
+            return;
+        }
+
+        const valorAdicional = parseFloat(document.getElementById('valorAdicionalInput').value) || 0;
+        if (valorAdicional < 0) {
+            mostrarToast('O valor adicional não pode ser negativo', 'danger');
+            return;
+        }
+
+        const valorPago = parseFloat(document.getElementById('valorPagoInput').value) || 0;
+        if (valorPago < 0) {
+            mostrarToast('O valor pago não pode ser negativo', 'danger');
+            return;
+        }
+        
+        const custoOperacional = parseFloat(document.getElementById('custoOperacionalInput').value) || 0;
+        if (custoOperacional < 0) {
+            mostrarToast('O custo operacional não pode ser negativo', 'danger');
+            return;
+        }
+        // Preparar dados para envio
+        const formData = new FormData();
+        formData.append('desconto', state.desconto);
+        formData.append('observacoes', document.getElementById('observacoes').value);
+        formData.append('data_evento', dataEvento);
+        formData.append('hora_evento', horaEvento);
+        formData.append('periodo_evento', duracaoEvento);
+        formData.append('tipo_evento', tipoEvento);
+        formData.append('valor_adicional', valorAdicional);
+        formData.append('valor_pago', valorPago);
+        formData.append('endereco', document.getElementById('endereco').value);
+        formData.append('custo_operacional', custoOperacional);
+        
+        // Adicionar itens no formato que sua view espera: "item_X" onde X é o ID
+        state.itensSelecionados.forEach((item) => {
+            formData.append(`item_${item.id}`, item.quantidade);
+        });
+
+        // Enviar via AJAX
+        fetch(`/orcamentos/${ {{ orcamento.id }} }/editar/`, {
+            method: 'POST',
+            headers: {
+                'X-CSRFToken': '{{ csrf_token }}',
+            },
+            body: formData
+        })
+        .then(response => {
+            if (response.redirected) {
+                // Se redirecionou, significa que foi bem-sucedido
+                window.location.href = response.url;
+                return;
+            }
+            return response.json();
+        })
+        .then(data => {
+            if (data && data.success) {
+                mostrarToast('Orçamento atualizado com sucesso!', 'success');
+                setTimeout(() => {
+                    window.location.href = data.redirect_url || '{% url "orcamentos:detalhes_orcamento" orcamento_id=orcamento.id %}';
+                }, 2000);
+            } else if (data) {
+                mostrarToast(data.message || 'Erro ao atualizar orçamento', 'danger');
+            }
+        })
+        .catch(error => {
+            console.error('Erro:', error);
+            mostrarToast('Erro ao conectar com o servidor', 'danger');
+        });
+    }
+
+    // Event listeners
+    document.addEventListener('DOMContentLoaded', function () {
+        // Inicializar itens selecionados - COM VERIFICAÇÃO
+        if (itensSelecionadosInicial && typeof itensSelecionadosInicial === 'object') {
+            for (const [itemId, quantidade] of Object.entries(itensSelecionadosInicial)) {
+                try {
+                    const item = itensDisponiveis.find(i => i.id == itemId);
+                    if (item) {
+                        state.itensSelecionados.push({
+                            id: parseInt(itemId),
+                            nome: item.nome,
+                            preco: item.preco,
+                            quantidade: parseInt(quantidade)
+                        });
+                    }
+                } catch (error) {
+                    console.error('Erro ao carregar item:', error);
+                }
+            }
+        }
+
+        // Inicializar a lista de itens
+        renderizarItens();
+
+        // Busca de itens
+        document.getElementById('buscaItens').addEventListener('input', renderizarItens);
+
+        // Campo de desconto
+        document.getElementById('descontoInput').addEventListener('input', function () {
+            state.desconto = parseFloat(this.value) || 0;
+            if (state.desconto > 100) {
+                state.desconto = 100;
+                this.value = 100;
+            }
+            atualizarResumo();
+        });
+
+        // Campo de valor adicional
+        document.getElementById('valorAdicionalInput').addEventListener('input', function () {
+            atualizarResumo();
+        });
+
+        // Campo de valor pago
+        document.getElementById('valorPagoInput').addEventListener('input', function () {
+            atualizarResumo();
+        });
+
+        // Botão de salvar
+        document.getElementById('salvarBtn').addEventListener('click', salvarOrcamento);
+
+        // Botão de visualizar PDF
+        document.getElementById('visualizarPdfBtn').addEventListener('click', function () {
+            if (state.itensSelecionados.length === 0) {
+                mostrarToast('Adicione itens ao orçamento antes de visualizar o PDF', 'warning');
+                return;
+            }
+            mostrarToast('PDF gerado com sucesso!', 'info');
+            // Em uma aplicação real, abriria o PDF ou faria o download
+        });
+
+        // Botão de enviar para cliente
+        document.getElementById('enviarClienteBtn').addEventListener('click', function () {
+            if (state.itensSelecionados.length === 0) {
+                mostrarToast('Adicione itens ao orçamento antes de enviar', 'warning');
+                return;
+            }
+
+            mostrarToast('Orçamento enviado para o cliente com sucesso!', 'success');
+        });
+
+        // Atualizar resumo inicial
+        atualizarResumo();
+        renderizarItens();
+    });
+</script>
+{% endblock %}

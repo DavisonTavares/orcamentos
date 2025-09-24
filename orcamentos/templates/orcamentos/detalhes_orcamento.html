@@ -1,0 +1,422 @@
+{% extends "base.html" %}
+{% load static %}
+
+{% block title %}Orçamento #{{ orcamento.id }} - Mundo Kids{% endblock %}
+
+{% block content %}
+<style>
+    :root {
+            --primary: {{ empresa_theme.primary }};
+            --secondary: {{ empresa_theme.secondary }};
+            --accent: {{ empresa_theme.accent }};
+            --light: #F8FAFC;
+            --dark: #1E293B;
+            --success: #10B981;
+        }    
+
+    body {
+        font-family: 'Poppins', sans-serif;
+        background: linear-gradient(135deg, #f5f7ff 0%, #e6f2ff 100%);
+        color: var(--dark);
+        min-height: 100vh;
+    }
+
+    .header-container {
+        background: linear-gradient(120deg, var(--primary), var(--secondary));
+        color: white;
+        border-radius: 20px;
+        padding: 25px 30px;
+        margin-bottom: 2rem;
+        box-shadow: 0 10px 30px rgba(36, 99, 235, 0.15);
+    }
+
+    .content-container {
+        background: white;
+        border-radius: 20px;
+        box-shadow: 0 10px 30px rgba(36, 99, 235, 0.15);
+        overflow: hidden;
+        margin-bottom: 2rem;
+    }
+
+    .content-header {
+        background: var(--light);
+        padding: 20px 30px;
+        border-bottom: 1px solid #e2e8f0;
+    }
+
+    .content-body {
+        padding: 30px;
+    }
+
+    .section-title {
+        color: var(--primary);
+        font-weight: 600;
+        margin-bottom: 20px;
+        position: relative;
+        padding-left: 15px;
+    }
+
+    .section-title::before {
+        content: '';
+        position: absolute;
+        left: 0;
+        top: 50%;
+        transform: translateY(-50%);
+        width: 6px;
+        height: 24px;
+        background: var(--primary);
+        border-radius: 3px;
+    }
+
+    .item-card {
+        background: var(--light);
+        border-radius: 12px;
+        padding: 15px;
+        margin-bottom: 15px;
+        border: 1px solid #e2e8f0;
+    }
+
+    .summary-item {
+        display: flex;
+        justify-content: space-between;
+        padding: 10px 0;
+        border-bottom: 1px dashed #e2e8f0;
+    }
+
+    .total-price {
+        font-size: 1.5rem;
+        font-weight: 700;
+        color: var(--primary);
+    }
+
+    .status-badge {
+        padding: 8px 16px;
+        border-radius: 20px;
+        font-weight: 600;
+        font-size: 0.9rem;
+    }
+
+    .btn-primary {
+        background: linear-gradient(120deg, var(--primary), var(--secondary));
+        border: none;
+        border-radius: 12px;
+        padding: 12px 24px;
+        font-weight: 600;
+        transition: all 0.3s;
+    }
+
+    .btn-primary:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 5px 15px rgba(36, 99, 235, 0.3);
+    }
+
+    .btn-outline-primary {
+        border-radius: 12px;
+        padding: 12px 24px;
+        font-weight: 600;
+    }
+
+    .action-buttons {
+        position: sticky;
+        bottom: 20px;
+        background: white;
+        padding: 20px;
+        border-radius: 15px;
+        box-shadow: 0 -5px 20px rgba(0, 0, 0, 0.1);
+        margin-top: 2rem;
+    }
+
+    @media (max-width: 768px) {
+        .header-container, .content-container {
+            margin: 1rem;
+            border-radius: 15px;
+        }
+        
+        .content-body {
+            padding: 20px;
+        }
+    }
+</style>
+
+<!-- Cabeçalho -->
+<div class="container py-4">
+    <div class="header-container">
+        <div class="d-flex justify-content-between align-items-start">
+            <div>
+                <h1><i class="fas fa-file-invoice me-2"></i> Orçamento #{{ orcamento.id }}</h1>
+                <p class="mb-0">Criado em {{ orcamento.data_criacao|date:"d/m/Y H:i" }}</p>
+            </div>
+            <span class="status-badge 
+                {% if orcamento.status == 'confirmado' %}bg-success
+                {% elif orcamento.status == 'cancelado' %}bg-danger
+                {% else %}bg-warning text-dark{% endif %}">
+                {{ orcamento.get_status_display }}
+            </span>
+        </div>
+    </div>
+
+    <div class="row">
+        <!-- Coluna Principal -->
+        <div class="col-lg-8">
+            <!-- Dados do Cliente -->
+            <div class="content-container">
+                <div class="content-header">
+                    <h4 class="mb-0"><i class="fas fa-user me-2"></i> Dados do Cliente</h4>
+                </div>
+                <div class="content-body">
+                    <div class="row">
+                        <div class="col-md-4 mb-3">
+                            <label class="form-label fw-bold">Nome</label>
+                            <p class="mb-0">{{ orcamento.cliente.nome }}</p>
+                        </div>
+                        <div class="col-md-4 mb-3">
+                            <label class="form-label fw-bold">Telefone</label>
+                            <p class="mb-0">{{ orcamento.cliente.telefone }}</p>
+                        </div>
+                        <div class="col-md-4 mb-3">
+                            <label class="form-label fw-bold">Data do Evento</label>
+                            <p class="mb-0">{{ orcamento.data_evento|date:"d/m/Y"|default:"Não definida" }}</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Detalhes do agendamento local, data e hora -->
+            <div class="content-container">
+                <div class="content-header">
+                    <h4 class="mb-0"><i class="fas fa-calendar-alt me-2"></i> Detalhes do Evento</h4>
+                </div>
+                <div class="content-body">
+                    <div class="row">                       
+                            <div class="col-md-3 mb-3">
+                                <label class="form-label fw-bold">Data do Evento</label>
+                                <p class="mb-0">{{ orcamento.data_evento|date:"d/m/Y"|default:"Não definida" }}</p>
+                            </div>
+                                <div class="col-md-3 mb-3">
+                                    <label class="form-label                            
+                                        fw-bold">Hora do Evento</label>
+                                    <p class="mb-0">{{ orcamento.hora_evento|time:"H:i"|default:"Não definida" }}</p>
+                                </div>
+                                <div class="col-md-3 mb-3">
+                                    <label class="form-label
+                                        fw-bold">Duração do Evento</label>
+                                    <p class="mb-0">{{ orcamento.periodo_evento|default:"Não informada" }}</p>
+                                </div>
+                                
+                            <div class="col-md-3 mb-3">
+                                <label class="form-label
+                                    fw-bold">Tipo de Evento</label>
+                                <p class="mb-0">{{ orcamento.tipo_evento|default:"Não informado" }}</p>
+                            </div>          
+                            <div class="col-md-12 mb-3">
+                                <label class="form-label
+                                    fw-bold">Local do Evento</label>
+                                <p class="mb-0">{{ orcamento.endereco|default:"Não informado" }}</p>
+                            </div>                                      
+                    </div>
+                </div>
+            </div>
+
+
+
+            <!-- Itens do Orçamento -->
+            <div class="content-container">
+                <div class="content-header">
+                    <h4 class="mb-0"><i class="fas fa-list me-2"></i> Itens do Orçamento</h4>
+                </div>
+                <div class="content-body">
+                    {% for item in itens_com_totais %}                 
+                    <div class="item-card">
+                        <div class="d-flex justify-content-between align-items-center">
+                            <div>
+                                <h6 class="mb-1">{{ item.item.descricao }}</h6>
+                                <p class="mb-0 text-muted">{{ item.item.categoria }}</p>
+                            </div>
+                            <div class="text-end">
+                                <div class="fw-bold">{{ item.quantidade }} x R$ {{ item.item.valor_unitario }}</div>
+                                <div class="text-success">Subtotal: R$ {{ item.subtotal }}</div>
+                            </div>
+                        </div>
+                    </div>
+                    {% empty %}
+                    <p class="text-muted text-center py-4">Nenhum item neste orçamento</p>
+                    {% endfor %}
+                </div>
+            </div>
+
+            <!-- Observações -->
+            {% if orcamento.observacoes %}
+            <div class="content-container">
+                <div class="content-header">
+                    <h4 class="mb-0"><i class="fas fa-sticky-note me-2"></i> Observações</h4>
+                </div>
+                <div class="content-body">
+                    <p class="mb-0">{{ orcamento.observacoes }}</p>
+                </div>
+            </div>
+            {% endif %}
+        </div>
+
+        <!-- Coluna Lateral -->
+        <div class="col-lg-4">
+            <!-- Resumo Financeiro -->
+            <div class="content-container">
+                <div class="content-header">
+                    <h4 class="mb-0"><i class="fas fa-calculator me-2"></i> Resumo Financeiro</h4>
+                </div>
+                <div class="content-body">
+                    <div class="summary-item">
+                        <span>Subtotal</span>
+                        <span class="fw-medium">R$ {{ subtotal }}</span>
+                    </div>
+                    
+                    {% if desconto_geral > 0 %}
+                    <div class="summary-item">
+                        <span>Desconto ({{ desconto_geral }}%)</span>
+                        <span class="fw-medium text-success">- R$ {{ valor_desconto }}</span>
+                    </div>
+                    {% endif %}
+
+                    {% if orcamento.valor_adicional > 0 %}
+                    <div class="summary-item">
+                        <span>Valor Adicional</span>
+                        <span class="fw-medium text-danger">+ R$ {{ orcamento.valor_adicional }}</span>
+                    </div>
+                    {% endif %}
+
+                    {% if orcamento.valor_pago > 0 %}
+                    <div class="summary-item">
+                        <span>Valor Pago</span>
+                        <span class="fw-medium text-success">- R$ {{ orcamento.valor_pago }}</span>
+                    </div>
+                    {% endif %}
+
+                    <div class="summary-item pt-3">
+                        <span class="fw-bold">Total</span>
+                        <span class="total-price">R$ {{ total }}</span>
+                    </div>
+                    {% if orcamento.valor_pago > 0 %}
+                    <div class="summary-item pt-2">
+                        <span class="fw-bold">Saldo Devedor</span>
+                        <span class="total-price text-danger">R$ {{ saldo_devedor }}</span>
+                    </div>
+                    {% endif %}
+                </div>
+            </div>
+
+            <!-- Arquivos -->
+            <div class="content-container">
+                <div class="content-header">
+                    <h4 class="mb-0"><i class="fas fa-file me-2"></i> Arquivos</h4>
+                </div>
+                <div class="content-body">
+                    <div class="d-grid gap-2">
+                        <a class="btn btn-outline-secondary" href="{% url 'orcamentos:baixar_pdf' orcamento.id %}?gerar_pdf=1">
+                            <i class="fas fa-file-pdf me-2"></i>Gerar PDF
+                        </a>
+
+                        {% if orcamento.png %}
+                        <a href="{{ orcamento.png.url }}" class="btn btn-outline-primary" target="_blank">
+                            <i class="fas fa-image me-2"></i>Ver Imagem
+                        </a>
+                        {% endif %}
+                    </div>
+                </div>
+            </div>
+
+            <!-- Ações Rápidas -->
+            <div class="content-container">
+                <div class="content-header">
+                    <h4 class="mb-0"><i class="fas fa-bolt me-2"></i> Ações Rápidas</h4>
+                </div>
+                <div class="content-body">
+                    <div class="d-grid gap-2">
+                        <button class="btn btn-outline-primary" onclick="enviarPorWhatsApp()">
+                            <i class="fab fa-whatsapp me-2"></i>Enviar por WhatsApp
+                        </button>
+                        <button class="btn btn-outline-primary" onclick="copiarLink()">
+                            <i class="fas fa-link me-2"></i>Copiar Link
+                        </button>
+                        <a href="{% url 'orcamentos:editar_orcamento' orcamento.id %}" class="btn btn-outline-secondary">
+                            <i class="fas fa-edit me-2"></i>Editar Orçamento
+                        </a>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Barra de Ações Fixa -->
+    <div class="action-buttons">
+        <div class="d-flex gap-2 justify-content-center">
+            <a href="{% url 'orcamentos:lista_orcamentos' %}" class="btn btn-outline-secondary">
+                <i class="fas fa-arrow-left me-2"></i>Voltar
+            </a>
+            {% if orcamento.status == 'pendente' %}
+            <form method="post" action="{% url 'orcamentos:alterar_status' orcamento.id %}">
+                {% csrf_token %}
+                <input type="hidden" name="status" value="confirmado">
+                <button type="submit" class="btn btn-success">
+                    <i class="fas fa-check me-2"></i>Confirmar
+                </button>
+            </form>
+
+            <!-- Formulário para Cancelar -->
+            <form method="post" action="{% url 'orcamentos:alterar_status' orcamento.id %}">
+                {% csrf_token %}
+                <input type="hidden" name="status" value="cancelado">
+                <button type="submit" class="btn btn-danger">
+                    <i class="fas fa-times me-2"></i>Cancelar
+                </button>
+            </form>
+            {% endif %}
+            {% if orcamento.status == 'confirmado' %}
+            <form method="post" action="{% url 'orcamentos:alterar_status' orcamento.id %}">
+                {% csrf_token %}
+                <input type="hidden" name="status" value="concluido">
+                <button type="submit" class="btn btn-primary">
+                    <i class="fas fa-check-double me-2"></i>Concluir
+                </button>
+            </form>
+            
+            <form method="post" action="{% url 'orcamentos:alterar_status' orcamento.id %}">
+                {% csrf_token %}
+                <input type="hidden" name="status" value="reagendar">
+                <button type="submit" class="btn btn-warning text-dark">
+                    <i class="fas fa-calendar-alt me-2"></i>Reagendar
+                </button>
+            </form>
+            {% endif %}
+            {% if orcamento.status == 'reagendar' %}
+            <form method="post" action="{% url 'orcamentos:alterar_status' orcamento.id %}">
+                {% csrf_token %}
+                <input type="hidden" name="status" value="confirmado">
+                <button type="submit" class="btn btn-success">
+                    <i class="fas fa-check me-2"></i>Confirmar
+                </button>
+            </form>
+            {% endif %}
+
+            <a href="{% url 'orcamentos:novo_orcamento' %}" class="btn btn-primary">
+                <i class="fas fa-plus me-2"></i>Novo Orçamento
+            </a>
+        </div>
+    </div>
+</div>
+
+<script>
+    function enviarPorWhatsApp() {
+        const telefone = '{{ orcamento.cliente.telefone|cut:" "|cut:"("|cut:")"|cut:"-" }}';
+        const mensagem = `Olá {{ orcamento.cliente.nome }}! Segue o orçamento #{{ orcamento.id }} no valor de R$ {{ total }}.`;
+        const url = `https://wa.me/55${telefone}?text=${encodeURIComponent(mensagem)}`;
+        window.open(url, '_blank');
+    }
+
+    function copiarLink() {
+        const url = window.location.href;
+        navigator.clipboard.writeText(url).then(() => {
+            alert('Link copiado para a área de transferência!');
+        });
+    }
+</script>
+{% endblock %}

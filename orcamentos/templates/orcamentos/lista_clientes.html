@@ -1,0 +1,571 @@
+{% extends "base.html" %}
+{% load static %}
+
+{% block title %}Clientes - Mundo Kids{% endblock %}
+
+{% block content %}
+<style>
+        
+    :root {
+        --primary: {{ empresa_theme.primary }};
+        --secondary: {{ empresa_theme.secondary }};
+        --accent: {{ empresa_theme.accent }};
+        --primary-light: #e0f2fe;        
+        --success: #10B981;
+        --success-light: #dcfce7;
+        --warning: #F59E0B;
+        --light: #F8FAFC;
+        --dark: #1E293B;
+        --gray-100: #f8f9fa;
+        --gray-200: #e9ecef;
+        --gray-300: #dee2e6;
+        --gray-600: #6c757d;
+        --gray-800: #343a40;
+    }
+
+    .clientes-container {
+        padding: 1.5rem 0;
+    }
+
+    .clientes-header {
+        background: linear-gradient(135deg, var(--primary) 0%, var(--secondary) 100%);
+        color: white;
+        padding: 1.5rem;
+        border-radius: 12px;
+        margin-bottom: 1.5rem;
+        box-shadow: 0 4px 12px rgba(36, 99, 235, 0.15);
+    }
+
+    .stats-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+        gap: 0.75rem;
+        margin-bottom: 1.5rem;
+    }
+
+    .stats-card {
+        background: white;
+        border-radius: 10px;
+        padding: 1rem;
+        text-align: center;
+        box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+        border: 1px solid var(--gray-200);
+    }
+
+    .stats-number {
+        font-size: 1.75rem;
+        font-weight: 700;
+        color: var(--primary);
+        margin-bottom: 0.25rem;
+        line-height: 1;
+    }
+
+    .stats-label {
+        color: var(--gray-600);
+        font-size: 0.8rem;
+        font-weight: 500;
+    }
+
+    .search-container {
+        background: white;
+        border-radius: 10px;
+        padding: 1rem;
+        margin-bottom: 1rem;
+        box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
+        border: 1px solid var(--gray-200);
+    }
+
+    .search-box {
+        position: relative;
+    }
+
+    .search-box i {
+        position: absolute;
+        left: 12px;
+        top: 50%;
+        transform: translateY(-50%);
+        color: var(--gray-600);
+        font-size: 0.9rem;
+    }
+
+    .search-box input {
+        padding-left: 38px;
+        border-radius: 20px;
+        border: 1px solid var(--gray-300);
+        height: 38px;
+        font-size: 0.9rem;
+    }
+
+    .cliente-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+        gap: 1rem;
+    }
+
+    .cliente-card {
+        background: white;
+        border-radius: 10px;
+        padding: 1.25rem;
+        box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
+        border: 1px solid var(--gray-200);
+        transition: all 0.2s ease;
+        height: 100%;
+    }
+
+    .cliente-card:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+        border-color: var(--primary-light);
+    }
+
+    .cliente-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: flex-start;
+        margin-bottom: 1rem;
+        gap: 0.5rem;
+    }
+
+    .cliente-nome {
+        font-size: 1.1rem;
+        font-weight: 600;
+        color: var(--dark);
+        margin: 0;
+        line-height: 1.3;
+        word-break: break-word;
+    }
+
+    .cliente-actions {
+        display: flex;
+        gap: 0.5rem;
+        flex-shrink: 0;
+    }
+
+    .btn-icon {
+        width: 32px;
+        height: 32px;
+        padding: 0;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        border-radius: 8px;
+        font-size: 0.8rem;
+    }
+
+    .cliente-info {
+        display: flex;
+        flex-direction: column;
+        gap: 0.75rem;
+        margin-bottom: 1rem;
+    }
+
+    .info-item {
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+    }
+
+    .info-icon {
+        width: 20px;
+        height: 20px;
+        background: var(--primary-light);
+        border-radius: 50%;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        color: var(--primary);
+        font-size: 0.7rem;
+        flex-shrink: 0;
+    }
+
+    .info-content {
+        flex: 1;
+        min-width: 0;
+    }
+
+    .info-label {
+        font-size: 0.75rem;
+        color: var(--gray-600);
+        margin-bottom: 0.1rem;
+    }
+
+    .info-value {
+        font-size: 0.9rem;
+        font-weight: 500;
+        color: var(--dark);
+        word-break: break-word;
+    }
+
+    .cliente-stats {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 0.5rem;
+        margin-bottom: 1rem;
+    }
+
+    .stat-badge {
+        padding: 0.3rem 0.6rem;
+        border-radius: 12px;
+        font-size: 0.75rem;
+        font-weight: 500;
+        display: inline-flex;
+        align-items: center;
+        gap: 0.25rem;
+    }
+
+    .stat-orcamentos {
+        background: var(--primary-light);
+        color: #0c4a6e;
+    }
+
+    .stat-confirmados {
+        background: var(--success-light);
+        color: #166534;
+    }
+
+    .stat-concluidos {
+        background: #fce7f3;
+        color: #831843;
+    }
+
+    .cliente-footer {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        padding-top: 0.75rem;
+        border-top: 1px solid var(--gray-200);
+    }
+
+    .cliente-data {
+        font-size: 0.75rem;
+        color: var(--gray-600);
+    }
+
+    .empty-state {
+        text-align: center;
+        padding: 3rem 1rem;
+        color: var(--gray-600);
+        grid-column: 1 / -1;
+    }
+
+    .empty-state i {
+        font-size: 3rem;
+        margin-bottom: 1rem;
+        color: var(--gray-300);
+    }
+
+    .empty-state h4 {
+        margin-bottom: 0.5rem;
+        color: var(--gray-800);
+    }
+
+    .pagination {
+        margin-top: 1.5rem;
+        justify-content: center;
+    }
+
+    .page-link {
+        padding: 0.5rem 0.75rem;
+        border-radius: 8px;
+        margin: 0 0.15rem;
+        border: 1px solid var(--gray-300);
+        color: var(--gray-600);
+    }
+
+    .page-item.active .page-link {
+        background: var(--primary);
+        border-color: var(--primary);
+    }
+
+    .filter-select {
+        width: 160px;
+        font-size: 0.9rem;
+        border-radius: 8px;
+        border: 1px solid var(--gray-300);
+    }
+
+    @media (max-width: 768px) {
+        .clientes-header {
+            padding: 1rem;
+        }
+        
+        .stats-grid {
+            grid-template-columns: 1fr 1fr;
+        }
+        
+        .stats-number {
+            font-size: 1.5rem;
+        }
+        
+        .cliente-grid {
+            grid-template-columns: 1fr;
+        }
+        
+        .cliente-header {
+            flex-direction: column;
+            align-items: flex-start;
+            gap: 0.75rem;
+        }
+        
+        .cliente-actions {
+            align-self: stretch;
+            justify-content: flex-end;
+        }
+        
+        .search-container {
+            padding: 0.75rem;
+        }
+    }
+
+    @media (max-width: 576px) {
+        .stats-grid {
+            grid-template-columns: 1fr;
+        }
+        
+        .clientes-header h1 {
+            font-size: 1.5rem;
+        }
+    }
+</style>
+
+<div class="container clientes-container">
+    <!-- Header com Estatísticas -->
+    <div class="clientes-header">
+        <div class="row align-items-center">
+            <div class="col-md-6">
+                <h1 class="mb-2"><i class="fas fa-users me-2"></i>Clientes</h1>
+                <p class="mb-0 opacity-75">Gestão completa da sua base de clientes</p>
+            </div>
+            <div class="col-md-6">
+                <div class="stats-grid">
+                    <div class="stats-card">
+                        <div class="stats-number">{{ total_clientes }}</div>
+                        <div class="stats-label">Total de Clientes</div>
+                    </div>
+                    <div class="stats-card">
+                        <div class="stats-number">{{ clientes_com_orcamento }}</div>
+                        <div class="stats-label">Com Orçamentos</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Barra de Ferramentas -->
+    <div class="search-container">
+        <div class="row align-items-center">
+            <div class="col-md-6 mb-2 mb-md-0">
+                <div class="search-box">
+                    <i class="fas fa-search"></i>
+                    <input type="text" class="form-control" id="buscaInput" 
+                           placeholder="Buscar por nome ou telefone..." value="{{ busca }}"
+                           onkeypress="if(event.keyCode==13) buscarClientes()">
+                </div>
+            </div>
+            <div class="col-md-6 d-flex justify-content-md-end gap-2">
+                <select class="form-select filter-select" onchange="ordenarClientes(this.value)">
+                    <option value="nome" {% if ordenacao == 'nome' %}selected{% endif %}>Ordenar por Nome</option>
+                    <option value="data_cadastro" {% if ordenacao == 'data_cadastro' %}selected{% endif %}>Data de Cadastro</option>
+                    <option value="ultimo_orcamento" {% if ordenacao == 'ultimo_orcamento' %}selected{% endif %}>Último Orçamento</option>
+                </select>
+                
+                <a href="{% url 'orcamentos:adicionar_cliente' %}" class="btn btn-primary">
+                    <i class="fas fa-plus me-1"></i>Novo
+                </a>
+            </div>
+        </div>
+    </div>
+
+    <!-- Lista de Clientes -->
+    <div class="cliente-grid">
+        {% if clientes %}
+            {% for cliente in clientes %}
+            <div class="cliente-card">
+                <div class="cliente-header">
+                        <h3 class="cliente-nome">
+                            <i class="fas fa-user-circle me-2 text-primary"></i>
+                            {{ cliente.nome }}</h3>                    
+                </div>
+
+                <div class="cliente-info">
+                    <div class="info-item">
+                        <div class="info-icon">
+                            <i class="fas fa-phone"></i>
+                        </div>
+                        <div class="info-content">
+                            <div class="info-label">Telefone</div>
+                            <div class="info-value">{{ cliente.telefone }}</div>
+                        </div>
+                    </div>
+
+                    <div class="info-item">
+                        <div class="info-icon">
+                            <i class="fas fa-calendar"></i>
+                        </div>
+                        <div class="info-content">
+                            <div class="info-label">Cadastro</div>
+                            <div class="info-value">{{ cliente.data_cadastro|date:"d/m/Y" }}</div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Estatísticas do Cliente -->
+                {% with total_orcamentos=cliente.total_orcamentos %}
+                <div class="cliente-stats">
+                    <span class="stat-badge stat-orcamentos">
+                        <i class="fas fa-file-invoice"></i>{{ total_orcamentos }}
+                    </span>
+                    
+                    {% if total_orcamentos > 0 %}
+                        {% with confirmados=cliente.orcamentos_confirmados %}
+                        {% if confirmados > 0 %}
+                        <span class="stat-badge stat-confirmados">
+                            <i class="fas fa-check-circle"></i>{{ confirmados }}
+                        </span>
+                        {% endif %}
+                        {% endwith %}
+                        
+                        {% with concluidos=cliente.orcamentos_concluidos %}
+                        {% if concluidos > 0 %}
+                        <span class="stat-badge stat-concluidos">
+                            <i class="fas fa-check-double"></i>{{ concluidos }}
+                        </span>
+                        {% endif %}
+                        {% endwith %}
+                    {% endif %}
+
+                    <!-- Ações do Cliente no lado direito -->
+                <div class="cliente-actions ms-auto">
+                        <a href="{% url 'orcamentos:cliente_detalhes' cliente.id %}" class="btn btn-sm btn-icon btn-info" title="Detalhes">
+                            <i class="fas fa-eye"></i>
+                        </a>
+                        <a href="{% url 'orcamentos:novo_orcamento' %}?cliente_id={{ cliente.id }}" class="btn btn-sm btn-icon btn-primary" title="Novo Orçamento">
+                            <i class="fas fa-file-invoice"></i>
+                        </a>
+                        <a href="https://wa.me/55{{ cliente.telefone|cut:' '|cut:'('|cut:')'|cut:'-' }}" 
+                           target="_blank" class="btn btn-sm btn-icon btn-success" title="WhatsApp">
+                            <i class="fab fa-whatsapp"></i>
+                        </a>
+                    </div>
+                </div>
+                {% endwith %}                
+
+                <div class="cliente-footer">
+                    <span class="cliente-data">ID: {{ cliente.id }}</span>
+                    <span class="cliente-data">Desde {{ cliente.data_cadastro|date:"Y" }}</span>
+                </div>
+            </div>
+            {% endfor %}
+        {% else %}
+            <div class="empty-state">
+                <i class="fas fa-users-slash"></i>
+                <h4>Nenhum cliente encontrado</h4>
+                <p class="mb-3">
+                    {% if busca %}
+                        Não foram encontrados clientes para "{{ busca }}".
+                    {% else %}
+                        Você ainda não possui clientes cadastrados.
+                    {% endif %}
+                </p>
+                {% if busca %}
+                    <a href="{% url 'orcamentos:lista_clientes' %}" class="btn btn-outline-primary btn-sm">
+                        Limpar busca
+                    </a>
+                {% else %}
+                    <a href="{% url 'orcamentos:novo_orcamento' %}" class="btn btn-primary">
+                        <i class="fas fa-plus me-2"></i>Cadastrar Primeiro Cliente
+                    </a>
+                {% endif %}
+            </div>
+        {% endif %}
+    </div>
+
+    <!-- Paginação -->
+    {% if page_obj.has_other_pages %}
+    <nav aria-label="Page navigation">
+        <ul class="pagination">
+            {% if page_obj.has_previous %}
+                <li class="page-item">
+                    <a class="page-link" href="?page=1&busca={{ busca }}&ordenacao={{ ordenacao }}" title="Primeira página">
+                        <i class="fas fa-angle-double-left"></i>
+                    </a>
+                </li>
+                <li class="page-item">
+                    <a class="page-link" href="?page={{ page_obj.previous_page_number }}&busca={{ busca }}&ordenacao={{ ordenacao }}" title="Página anterior">
+                        <i class="fas fa-angle-left"></i>
+                    </a>
+                </li>
+            {% endif %}
+
+            {% for num in page_obj.paginator.page_range %}
+                {% if page_obj.number == num %}
+                    <li class="page-item active">
+                        <span class="page-link">{{ num }}</span>
+                    </li>
+                {% elif num > page_obj.number|add:'-3' and num < page_obj.number|add:'3' %}
+                    <li class="page-item">
+                        <a class="page-link" href="?page={{ num }}&busca={{ busca }}&ordenacao={{ ordenacao }}">{{ num }}</a>
+                    </li>
+                {% endif %}
+            {% endfor %}
+
+            {% if page_obj.has_next %}
+                <li class="page-item">
+                    <a class="page-link" href="?page={{ page_obj.next_page_number }}&busca={{ busca }}&ordenacao={{ ordenacao }}" title="Próxima página">
+                        <i class="fas fa-angle-right"></i>
+                    </a>
+                </li>
+                <li class="page-item">
+                    <a class="page-link" href="?page={{ page_obj.paginator.num_pages }}&busca={{ busca }}&ordenacao={{ ordenacao }}" title="Última página">
+                        <i class="fas fa-angle-double-right"></i>
+                    </a>
+                </li>
+            {% endif %}
+        </ul>
+    </nav>
+    {% endif %}
+</div>
+
+<script>
+    function buscarClientes() {
+        const busca = document.getElementById('buscaInput').value;
+        const params = new URLSearchParams(window.location.search);
+        
+        if (busca) {
+            params.set('busca', busca);
+        } else {
+            params.delete('busca');
+        }
+        
+        window.location.href = '{% url "orcamentos:lista_clientes" %}?' + params.toString();
+    }
+
+    function ordenarClientes(ordenacao) {
+        const params = new URLSearchParams(window.location.search);
+        params.set('ordenacao', ordenacao);
+        window.location.href = '{% url "orcamentos:lista_clientes" %}?' + params.toString();
+    }
+
+    // Busca em tempo real
+    let searchTimeout;
+    document.getElementById('buscaInput').addEventListener('input', function(e) {
+        clearTimeout(searchTimeout);
+        searchTimeout = setTimeout(() => {
+            buscarClientes();
+        }, 500);
+    });
+
+    // Tecla ESC para limpar busca
+    document.addEventListener('keydown', function(e) {
+        if (e.key === 'Escape') {
+            document.getElementById('buscaInput').value = '';
+            buscarClientes();
+        }
+    });
+
+    // Focar no campo de busca ao carregar a página
+    document.addEventListener('DOMContentLoaded', function() {
+        document.getElementById('buscaInput').focus();
+    });
+</script>
+{% endblock %}

@@ -1,0 +1,595 @@
+{% extends "base.html" %}
+{% load static %}
+
+{% block title %}Dashboard de Relatórios - Mundo Kids{% endblock %}
+
+{% block extra_css %}
+<style>
+    :root {
+        --primary: {{ empresa_theme.primary }};
+        --secondary: {{ empresa_theme.secondary }};
+        --accent: {{ empresa_theme.accent }};
+        --success: #10B981;
+        --warning: #F59E0B;
+        --danger: #EF4444;
+        --info: #3B82F6;
+    }
+
+    .dashboard-card {
+        background: white;
+        border-radius: 16px;
+        padding: 20px;
+        margin-bottom: 20px;
+        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
+        border: 1px solid #e2e8f0;
+        transition: all 0.3s ease;
+        height: 100%;
+        position: relative;
+        overflow: hidden;
+    }
+
+    .card-icon {
+        width: 50px;
+        height: 50px;
+        border-radius: 12px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 1.3rem;
+        margin-bottom: 15px;
+    }
+
+    .card-value {
+        font-size: 1.8rem;
+        font-weight: 700;
+        margin: 8px 0;
+        color: var(--dark);
+        line-height: 1.2;
+    }
+
+    .card-label {
+        color: #64748B;
+        font-size: 0.85rem;
+        font-weight: 500;
+        margin-bottom: 8px;
+    }
+
+    .stats-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+        gap: 16px;
+        margin-bottom: 24px;
+    }
+
+    .chart-container {
+        background: white;
+        border-radius: 16px;
+        padding: 20px;
+        margin-bottom: 20px;
+        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
+        border: 1px solid #e2e8f0;
+        position: relative;
+    }
+
+    /* CONTÊINERES ESPECÍFICOS PARA GRÁFICOS */
+    .chart-wrapper {
+        position: relative;
+        height: 200px;
+        width: 100%;
+    }
+
+    .chart-wrapper-large {
+        height: 400px;
+    }
+
+    .chart-wrapper-small {
+        height: 180px;
+    }
+
+    .section-title {
+        color: var(--primary);
+        font-weight: 600;
+        margin-bottom: 15px;
+        padding-bottom: 10px;
+        border-bottom: 2px solid #e2e8f0;
+        font-size: 1.1rem;
+    }
+
+    .status-badge {
+        padding: 5px 10px;
+        border-radius: 16px;
+        font-size: 0.75rem;
+        font-weight: 600;
+        display: inline-block;
+        margin: 2px 0;
+    }
+
+    .badge-confirmado { background-color: #D1FAE5; color: #065F46; }
+    .badge-concluido { background-color: #DBEAFE; color: #1E40AF; }
+    .badge-pendente { background-color: #FEF3C7; color: #92400E; }
+    .badge-cancelado { background-color: #FEE2E2; color: #B91C1C; }
+
+    .compact-list {
+        margin: 0;
+        padding: 0;
+    }
+    
+    .compact-list .d-flex {
+        margin-bottom: 8px;
+        padding: 6px 0;
+    }
+
+    /* Navegação de meses */
+    .month-navigation {
+        background: white;
+        border-radius: 12px;
+        padding: 15px;
+        margin-bottom: 20px;
+        box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
+        border: 1px solid #e2e8f0;
+    }
+
+    .month-nav-btn {
+        width: 40px;
+        height: 40px;
+        border-radius: 10px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        border: 1px solid #e2e8f0;
+        background: white;
+        color: var(--primary);
+        transition: all 0.2s ease;
+    }
+
+    .month-nav-btn:hover {
+        background: var(--primary);
+        color: white;
+        border-color: var(--primary);
+    }
+
+    .current-month {
+        font-weight: 600;
+        color: var(--primary);
+        font-size: 1.1rem;
+    }
+
+    .comparison-badge {
+        font-size: 0.75rem;
+        padding: 3px 8px;
+        border-radius: 12px;
+        font-weight: 500;
+    }
+
+    .comparison-positive {
+        background-color: #D1FAE5;
+        color: #065F46;
+    }
+
+    .comparison-negative {
+        background-color: #FEE2E2;
+        color: #B91C1C;
+    }
+
+    .comparison-neutral {
+        background-color: #FEF3C7;
+        color: #92400E;
+    }
+
+    @media (max-width: 768px) {
+        .stats-grid {
+            grid-template-columns: 1fr;
+            gap: 12px;
+        }
+        
+        .chart-wrapper {
+            height: 180px;
+        }
+        
+        .chart-wrapper-large {
+            height: 200px;
+        }
+        
+        .chart-wrapper-small {
+            height: 160px;
+        }
+        
+        .month-navigation {
+            padding: 10px;
+        }
+        
+        .current-month {
+            font-size: 1rem;
+        }
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="container-fluid py-3">
+    <!-- Cabeçalho e Navegação -->
+    <div class="row mb-3">
+        <div class="col-12">
+            <div class="month-navigation">
+                <div class="d-flex align-items-center justify-content-between">
+                    <a href="?mes={{ mes_anterior|date:'Y-m' }}" class="month-nav-btn">
+                        <i class="fas fa-chevron-left"></i>
+                    </a>
+                    
+                    <div class="text-center">
+                        <h1 class="h3 mb-1 current-month">
+                            <i class="fas fa-chart-line me-2"></i>{{ mes_atual|date:"F Y" }}
+                        </h1>
+                        <p class="text-muted mb-0 small">
+                            Comparado com {{ mes_anterior|date:"F Y" }}
+                        </p>
+                    </div>
+                    
+                    <a href="?mes={{ mes_proximo|date:'Y-m' }}" class="month-nav-btn">
+                        <i class="fas fa-chevron-right"></i>
+                    </a>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Métricas Principais com Comparação -->
+    <div class="row mb-3">
+        <div class="col-12">
+            <div class="stats-grid">
+                <!-- Receita Total -->
+                <div class="dashboard-card">
+                    <div class="card-icon" style="background-color: rgba(37, 99, 235, 0.1); color: var(--primary);">
+                        <i class="fas fa-money-bill-wave"></i>
+                    </div>
+                    <div class="card-value">R$ {{ total_mes|floatformat:2 }}</div>
+                    <div class="card-label">Possivel Receita Total</div>
+                    {% if comparacao_receita > 0 %}
+                        <span class="comparison-badge comparison-positive">
+                            <i class="fas fa-arrow-up"></i> {{ comparacao_receita|floatformat:0 }}%
+                        </span>
+                    {% elif comparacao_receita < 0 %}
+                        <span class="comparison-badge comparison-negative">
+                            <i class="fas fa-arrow-down"></i> {{ comparacao_receita|floatformat:0|cut:"-" }}%
+                        </span>
+                    {% else %}
+                        <span class="comparison-badge comparison-neutral">
+                            <i class="fas fa-equals"></i> 0%
+                        </span>
+                    {% endif %}
+                </div>
+
+                <!-- Total de Orçamentos -->
+                <!--
+                <div class="dashboard-card">
+                    <div class="card-icon" style="background-color: rgba(16, 185, 129, 0.1); color: var(--success);">
+                        <i class="fas fa-file-invoice"></i>
+                    </div>
+                    <div class="card-value">{{ total_orcamentos }}</div>
+                    <div class="card-label">Total de Orçamentos</div>
+                    {% if comparacao_orcamentos > 0 %}
+                        <span class="comparison-badge comparison-positive">
+                            <i class="fas fa-arrow-up"></i> {{ comparacao_orcamentos|floatformat:0 }}%
+                        </span>
+                    {% elif comparacao_orcamentos < 0 %}
+                        <span class="comparison-badge comparison-negative">
+                            <i class="fas fa-arrow-down"></i> {{ comparacao_orcamentos|floatformat:0|cut:"-" }}%
+                        </span>
+                    {% else %}
+                        <span class="comparison-badge comparison-neutral">
+                            <i class="fas fa-equals"></i> 0%
+                        </span>
+                    {% endif %}
+                </div>
+                -->
+                <!-- Receita Recebida -->
+                <div class="dashboard-card">
+                    <div class="card-icon" style="background-color: rgba(59, 130, 246, 0.1); color: var(--info);">
+                        <i class="fas fa-check-circle"></i>
+                    </div>
+                    <div class="card-value">R$ {{ total_pago|floatformat:2 }}</div>
+                    <div class="card-label">Receita Recebida</div>
+                    {% if comparacao_pago > 0 %}
+                        <span class="comparison-badge comparison-positive">
+                            <i class="fas fa-arrow-up"></i> {{ comparacao_pago|floatformat:0 }}%
+                        </span>
+                    {% elif comparacao_pago < 0 %}
+                        <span class="comparison-badge comparison-negative">
+                            <i class="fas fa-arrow-down"></i> {{ comparacao_pago|floatformat:0|cut:"-" }}%
+                        </span>
+                    {% else %}
+                        <span class="comparison-badge comparison-neutral">
+                            <i class="fas fa-equals"></i> 0%
+                        </span>
+                    {% endif %}
+                </div>
+
+                <!-- Receita Prevista -->
+                <div class="dashboard-card">
+                    <div class="card-icon" style="background-color: rgba(245, 158, 11, 0.1); color: var(--warning);">
+                        <i class="fas fa-chart-line"></i>
+                    </div>
+                    <div class="card-value">R$ {{ total_confirmado|floatformat:2 }}</div>
+                    <div class="card-label">Receita Prevista</div>
+                    {% if comparacao_confirmado > 0 %}
+                        <span class="comparison-badge comparison-positive">
+                            <i class="fas fa-arrow-up"></i> {{ comparacao_confirmado|floatformat:0 }}%
+                        </span>
+                    {% elif comparacao_confirmado < 0 %}
+                        <span class="comparison-badge comparison-negative">
+                            <i class="fas fa-arrow-down"></i> {{ comparacao_confirmado|floatformat:0|cut:"-" }}%
+                        </span>
+                    {% else %}
+                        <span class="comparison-badge comparison-neutral">
+                            <i class="fas fa-equals"></i> 0%
+                        </span>
+                    {% endif %}
+                </div>
+                <!-- Custo Operacional Total -->
+                <div class="dashboard-card">
+                    <div class="card-icon" style="background-color: rgba(239, 68, 68, 0.1); color: var(--danger);">
+                        <i class="fas fa-cogs"></i>
+                    </div>
+                    <div class="card-value">R$ {{ custo_operacional_total|floatformat:2 }}</div>
+                    <div class="card-label">Custo Operacional Total</div>
+                    {% if comparacao_custo > 0 %}
+                        <span class="comparison-badge comparison-positive">
+                            <i class="fas fa-arrow-up"></i> {{ comparacao_custo|floatformat:0 }}%
+                        </span>
+                    {% elif comparacao_custo < 0 %}
+                        <span class="comparison-badge comparison-negative">
+                            <i class="fas fa-arrow-down"></i> {{ comparacao_custo|floatformat:0|cut:"-" }}%
+                        </span>
+                    {% else %}
+                        <span class="comparison-badge comparison-neutral">
+                            <i class="fas fa-equals"></i> 0%
+                        </span>
+                    {% endif %}
+                </div>
+                <!-- Lucro Estimado -->
+                <div class="dashboard-card">
+                    <div class="card-icon" style="background-color: rgba(16, 185, 129, 0.1); color: var(--success);">
+                        <i class="fas fa-dollar-sign"></i>
+                    </div>
+                    <div class="card-value">R$ {{ lucro_estimado|floatformat:2 }}</div>
+                    <div class="card-label">Lucro Estimado</div>
+                    {% if comparacao_lucro > 0 %}
+                        <span class="comparison-badge comparison-positive">
+                            <i class="fas fa-arrow-up"></i> {{ comparacao_lucro|floatformat:0 }}%
+                        </span>
+                    {% elif comparacao_lucro < 0 %}
+                        <span class="comparison-badge comparison-negative">
+                            <i class="fas fa-arrow-down"></i> {{ comparacao_lucro|floatformat:0|cut:"-" }}%
+                        </span>
+                    {% else %}
+                        <span class="comparison-badge comparison-neutral">
+                            <i class="fas fa-equals"></i> 0%
+                        </span>
+                    {% endif %}
+                </div>                                    
+            </div>
+        </div>
+    </div>
+
+    <!-- Gráficos e Estatísticas -->
+    <div class="row mb-3">
+        <!-- Gráfico de Evolução (6 meses) -->
+        <div class="col-lg-8 mb-3">
+            <div class="chart-container">
+                <h4 class="section-title">
+                    <i class="fas fa-chart-bar me-2"></i>Evolução dos Últimos 6 Meses
+                </h4>
+                <div class="chart-wrapper chart-wrapper-large">
+                    <canvas id="evolutionChart"></canvas>
+                </div>
+            </div>
+        </div>
+
+        <!-- Status dos Orçamentos -->
+        <div class="col-lg-4 mb-3">
+            <div class="chart-container">
+                <h4 class="section-title">
+                    <i class="fas fa-tachometer-alt me-2"></i>Status dos Orçamentos
+                </h4>
+                <div class="chart-wrapper chart-wrapper-small">
+                    <canvas id="statusChart"></canvas>
+                </div>
+                <div class="compact-list mt-3">
+                    <div class="d-flex justify-content-between align-items-center">
+                        <span class="status-badge badge-confirmado">Confirmados</span>
+                        <span class="fw-bold">{{ orcamentos_confirmados }}</span>
+                    </div>
+                    <div class="d-flex justify-content-between align-items-center">
+                        <span class="status-badge badge-concluido">Concluídos</span>
+                        <span class="fw-bold">{{ orcamentos_concluidos }}</span>
+                    </div>
+                    <div class="d-flex justify-content-between align-items-center">
+                        <span class="status-badge badge-pendente">Pendentes</span>
+                        <span class="fw-bold">{{ orcamentos_pendentes }}</span>
+                    </div>
+                    <div class="d-flex justify-content-between align-items-center">
+                        <span class="status-badge badge-cancelado">Cancelados</span>
+                        <span class="fw-bold">{{ orcamentos_cancelados }}</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Métricas Secundárias -->
+    <div class="row">
+        <div class="col-md-6 col-lg-3 mb-3">
+            <div class="dashboard-card text-center">
+                <div class="card-icon mx-auto" style="background-color: rgba(239, 68, 68, 0.1); color: var(--danger);">
+                    <i class="fas fa-calendar-times"></i>
+                </div>
+                <div class="card-value">{{ reagendados }}</div>
+                <div class="card-label">Reagendados</div>
+            </div>
+        </div>
+
+        <div class="col-md-6 col-lg-3 mb-3">
+            <div class="dashboard-card text-center">
+                <div class="card-icon mx-auto" style="background-color: rgba(139, 92, 246, 0.1); color: #8B5CF6;">
+                    <i class="fas fa-users"></i>
+                </div>
+                <div class="card-value">{{ novos_clientes }}</div>
+                <div class="card-label">Novos Clientes</div>
+            </div>
+        </div>
+
+        <div class="col-md-6 col-lg-3 mb-3">
+            <div class="dashboard-card text-center">
+                <div class="card-icon mx-auto" style="background-color: rgba(14, 165, 233, 0.1); color: #0EA5E9;">
+                    <i class="fas fa-star"></i>
+                </div>
+                <div class="card-value">4.8</div>
+                <div class="card-label">Avaliação Média</div>
+            </div>
+        </div>
+
+        <div class="col-md-6 col-lg-3 mb-3">
+            <div class="dashboard-card text-center">
+                <div class="card-icon mx-auto" style="background-color: rgba(234, 179, 8, 0.1); color: #EAB308;">
+                    <i class="fas fa-percentage"></i>
+                </div>
+                <div class="card-value">{{ taxa_conversao|floatformat:0 }}%</div>
+                <div class="card-label">Taxa de Conversão</div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<script>
+    document.addEventListener('DOMContentLoaded', function() {
+        // Gráfico de Evolução dos últimos 6 meses
+        const evolutionCtx = document.getElementById('evolutionChart').getContext('2d');
+        const evolutionChart = new Chart(evolutionCtx, {
+            type: 'line',
+            data: {
+                labels: {{ meses|safe }},
+                datasets: [{
+                    label: 'Receita Mensal (R$)',
+                    data: {{ valores_mensais|safe }},
+                    borderColor: '{{ empresa_theme.primary }}',
+                    backgroundColor: 'rgba(37, 99, 235, 0.1)',
+                    borderWidth: 2,
+                    fill: true,
+                    tension: 0.3,
+                    pointBackgroundColor: '{{ empresa_theme.primary }}',
+                    pointBorderColor: '#ffffff',
+                    pointBorderWidth: 2,
+                    pointRadius: 4,
+                    pointHoverRadius: 6
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: true,
+                plugins: {
+                    legend: {
+                        display: false
+                    },
+                    tooltip: {
+                        mode: 'index',
+                        intersect: false,
+                        backgroundColor: 'rgba(0, 0, 0, 0.8)',
+                        titleFont: { size: 12 },
+                        bodyFont: { size: 11 },
+                        callbacks: {
+                            label: function(context) {
+                                return 'R$ ' + context.raw.toLocaleString('pt-BR');
+                            }
+                        }
+                    }
+                },
+                scales: {
+                    y: {
+                        beginAtZero: true,
+                        grid: {
+                            drawBorder: false,
+                            color: 'rgba(0, 0, 0, 0.05)'
+                        },
+                        ticks: {
+                            font: { size: 10 },
+                            callback: function(value) {
+                                return 'R$ ' + value.toLocaleString('pt-BR');
+                            }
+                        }
+                    },
+                    x: {
+                        grid: {
+                            display: false
+                        },
+                        ticks: {
+                            font: { size: 10 },
+                            maxRotation: 45,
+                            minRotation: 45
+                        }
+                    }
+                }
+            }
+        });
+
+        // Gráfico de Status (Pizza)
+        const statusCtx = document.getElementById('statusChart').getContext('2d');
+        const statusChart = new Chart(statusCtx, {
+            type: 'doughnut',
+            data: {
+                labels: ['Confirmados', 'Concluídos', 'Pendentes', 'Cancelados'],
+                datasets: [{
+                    data: [
+                        {{ orcamentos_confirmados }},
+                        {{ orcamentos_concluidos }},
+                        {{ orcamentos_pendentes }},
+                        {{ orcamentos_cancelados }}
+                    ],
+                    backgroundColor: [
+                        '#10B981',
+                        '#3B82F6',
+                        '#F59E0B',
+                        '#EF4444'
+                    ],
+                    borderWidth: 0,
+                    hoverOffset: 8
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: true,
+                cutout: '60%',
+                plugins: {
+                    legend: {
+                        display: false
+                    },
+                    tooltip: {
+                        backgroundColor: 'rgba(0, 0, 0, 0.8)',
+                        titleFont: { size: 11 },
+                        bodyFont: { size: 10 },
+                        callbacks: {
+                            label: function(context) {
+                                const label = context.label || '';
+                                const value = context.raw || 0;
+                                const total = context.dataset.data.reduce((a, b) => a + b, 0);
+                                const percentage = Math.round((value / total) * 100);
+                                return `${label}: ${value} (${percentage}%)`;
+                            }
+                        }
+                    }
+                }
+            }
+        });
+
+        // Ajustar redimensionamento dos gráficos
+        function resizeCharts() {
+            evolutionChart.resize();
+            statusChart.resize();
+        }
+
+        window.addEventListener('resize', resizeCharts);
+    });
+</script>
+{% endblock %}

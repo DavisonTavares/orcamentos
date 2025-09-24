@@ -1,0 +1,560 @@
+{% extends "base.html" %}
+{% load static %}
+
+{% block title %}Editar Item - Mundo Kids{% endblock %}
+
+{% block content %}
+<style>
+    :root {
+            --primary: {{ empresa_theme.primary }};
+            --secondary: {{ empresa_theme.secondary }};
+            --accent: {{ empresa_theme.accent }};
+            --light: #F8FAFC;
+            --dark: #1E293B;
+            --success: #10B981;
+        }    
+
+    .form-container {
+        background: white;
+        border-radius: 20px;
+        box-shadow: 0 10px 30px rgba(36, 99, 235, 0.15);
+        overflow: hidden;
+        margin: 2rem auto;
+        max-width: 800px;
+    }
+
+    .form-header {
+        background: linear-gradient(120deg, var(--primary), var(--secondary));
+        color: white;
+        padding: 25px 30px;
+        text-align: center;
+    }
+
+    .form-body {
+        padding: 30px;
+    }
+
+    .form-section {
+        margin-bottom: 30px;
+        padding-bottom: 20px;
+        border-bottom: 1px solid #e2e8f0;
+    }
+
+    .section-title {
+        color: var(--primary);
+        font-weight: 600;
+        margin-bottom: 20px;
+        position: relative;
+        padding-left: 15px;
+    }
+
+    .section-title::before {
+        content: '';
+        position: absolute;
+        left: 0;
+        top: 50%;
+        transform: translateY(-50%);
+        width: 6px;
+        height: 24px;
+        background: var(--primary);
+        border-radius: 3px;
+    }
+
+    .form-control, .form-select {
+        border-radius: 12px;
+        padding: 12px 16px;
+        border: 1px solid #e2e8f0;
+        transition: all 0.3s;
+    }
+
+    .form-control:focus, .form-select:focus {
+        border-color: var(--primary);
+        box-shadow: 0 0 0 3px rgba(36, 99, 235, 0.2);
+    }
+
+    .btn-primary {
+        background: linear-gradient(120deg, var(--primary), var(--secondary));
+        border: none;
+        border-radius: 12px;
+        padding: 12px 24px;
+        font-weight: 600;
+        transition: all 0.3s;
+    }
+
+    .btn-primary:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 5px 15px rgba(36, 99, 235, 0.3);
+    }
+
+    .btn-outline-primary {
+        border-radius: 12px;
+        padding: 12px 24px;
+        font-weight: 600;
+    }
+
+    .btn-danger {
+        border-radius: 12px;
+        padding: 12px 24px;
+        font-weight: 600;
+    }
+
+    .preview-card {
+        background: var(--light);
+        border-radius: 12px;
+        padding: 20px;
+        margin-top: 20px;
+        border: 2px dashed var(--primary);
+    }
+
+    .preview-item {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        padding: 15px;
+        background: white;
+        border-radius: 8px;
+        margin-bottom: 10px;
+        box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+    }
+
+    .categoria-badge {
+        background: var(--primary);
+        color: white;
+        padding: 4px 12px;
+        border-radius: 20px;
+        font-size: 0.8rem;
+        font-weight: 500;
+    }
+
+    .disponivel-badge {
+        background: var(--success);
+        color: white;
+        padding: 4px 10px;
+        border-radius: 6px;
+        font-size: 0.75rem;
+    }
+
+    .indisponivel-badge {
+        background: var(--accent);
+        color: white;
+        padding: 4px 10px;
+        border-radius: 6px;
+        font-size: 0.75rem;
+    }
+
+    .form-check-input {
+        width: 20px;
+        height: 20px;
+        border-radius: 6px;
+        border: 2px solid #e2e8f0;
+    }
+
+    .form-check-input:checked {
+        background-color: var(--primary);
+        border-color: var(--primary);
+    }
+
+    .item-info-card {
+        background: var(--light);
+        border-radius: 12px;
+        padding: 20px;
+        margin-bottom: 20px;
+        border-left: 4px solid var(--primary);
+    }
+
+    @media (max-width: 768px) {
+        .form-container {
+            margin: 1rem;
+        }
+
+        .form-body {
+            padding: 20px;
+        }
+    }
+</style>
+
+<div class="container py-4">
+    <div class="row">
+        <div class="col-12">
+            <div class="d-flex justify-content-between align-items-center mb-4">
+                <h1 class="h3 mb-0">
+                    <i class="fas fa-edit me-2"></i>Editar Item
+                </h1>
+                <a href="{% url 'orcamentos:lista_itens' %}" class="btn btn-outline-primary">
+                    <i class="fas fa-arrow-left me-2"></i>Voltar para Lista
+                </a>
+            </div>
+
+            <!-- Informações do Item -->
+            <div class="item-info-card">
+                <div class="row">
+                    <div class="col-md-8">
+                        <h5 class="mb-2">{{ item.descricao }}</h5>
+                        <div class="d-flex flex-wrap gap-2 align-items-center">
+                            <span class="categoria-badge">
+                                <i class="fas fa-tag me-1"></i>
+                                {{ item.get_categoria_display }}
+                            </span>
+                            <span class="badge {% if item.disponivel %}bg-success{% else %}bg-secondary{% endif %}">
+                                <i class="fas fa-circle me-1"></i>
+                                {% if item.disponivel %}Disponível{% else %}Indisponível{% endif %}
+                            </span>
+                            <span class="text-muted small">
+                                <i class="fas fa-calendar me-1"></i>
+                                Criado em: {{ item.data_criacao|date:"d/m/Y" }}
+                            </span>
+                        </div>
+                    </div>
+                    <div class="col-md-4 text-md-end">
+                        <div class="h4 text-primary mb-1">R$ {{ item.valor_unitario }}</div>
+                        {% if item.desconto > 0 %}
+                        <div class="text-success small">
+                            Desconto: {{ item.desconto }}%
+                        </div>
+                        {% endif %}
+                    </div>
+                </div>
+            </div>
+
+            <div class="form-container">
+                <div class="form-header">
+                    <h2><i class="fas fa-edit me-2"></i> Editar Item</h2>
+                    <p class="mb-0">Atualize os dados do item no catálogo</p>
+                </div>
+
+                <div class="form-body">
+                    <form method="post" id="itemForm">
+                        {% csrf_token %}
+                        
+                        {% if form.errors %}
+                        <div class="alert alert-danger">
+                            <i class="fas fa-exclamation-circle me-2"></i>
+                            Por favor, corrija os erros abaixo.
+                        </div>
+                        {% endif %}
+
+                        <div class="form-section">
+                            <h4 class="section-title">Informações Básicas</h4>
+                            <div class="row">
+                                <div class="col-md-6 mb-3">
+                                    <label class="form-label">Nome do Item (Opcional)</label>
+                                    <input type="text" class="form-control" name="nome" 
+                                           placeholder="Ex: Cama Elástica Grande" 
+                                           value="{{ form.nome.value|default:'' }}">
+                                    {% if form.nome.errors %}
+                                    <div class="text-danger small mt-1">
+                                        {{ form.nome.errors.0 }}
+                                    </div>
+                                    {% endif %}
+                                </div>
+                                
+                                <div class="col-md-6 mb-3">
+                                    <label class="form-label">Categoria *</label>
+                                    <select class="form-select" name="categoria" required>
+                                        <option value="">Selecione uma categoria...</option>
+                                        <option value="brinquedo" {% if form.categoria.value == 'brinquedo' %}selected{% endif %}>Brinquedo</option>
+                                        <option value="buffet" {% if form.categoria.value == 'buffet' %}selected{% endif %}>Buffet</option>
+                                        <option value="personalizado" {% if form.categoria.value == 'personalizado' %}selected{% endif %}>Personalizado</option>
+                                        <option value="buffet_personalizado" {% if form.categoria.value == 'buffet_personalizado' %}selected{% endif %}>Buffet - Personalizado</option>
+                                        <option value="servico" {% if form.categoria.value == 'servico' %}selected{% endif %}>Serviço</option>
+                                        <option value="outro" {% if form.categoria.value == 'outro' %}selected{% endif %}>Outro</option>
+                                    </select>
+                                    {% if form.categoria.errors %}
+                                    <div class="text-danger small mt-1">
+                                        {{ form.categoria.errors.0 }}
+                                    </div>
+                                    {% endif %}
+                                </div>
+                            </div>
+
+                            <div class="row">
+                                <div class="col-12 mb-3">
+                                    <label class="form-label">Descrição *</label>
+                                    <input type="text" class="form-control" name="descricao" 
+                                           placeholder="Ex: Cama elástica 3x3m com rede de proteção" 
+                                           value="{{ form.descricao.value|default:'' }}" required>
+                                    {% if form.descricao.errors %}
+                                    <div class="text-danger small mt-1">
+                                        {{ form.descricao.errors.0 }}
+                                    </div>
+                                    {% endif %}
+                                </div>
+                            </div>
+                            
+                            <div class="row">
+                                <div class="col-6 mb-3">
+                                    <label class="form-label">Investimento (R$) *</label>
+                                    <input type="number" class="form-control" name="investimento" 
+                                           step="0.01" min="0" placeholder="0.00" 
+                                           value="{{ form.investimento.value|default:'0.00' }}" required>
+                                    {% if form.investimento.errors %}
+                                    <div class="text-danger small mt-1">
+                                        {{ form.investimento.errors.0 }}
+                                    </div>
+                                    {% endif %}
+                                </div>
+                                <div class="col-6 mb-3">
+                                    <label class="form-label">Custo Fixo (R$) *</label>
+                                    <input type="number" class="form-control" name="custo_fixo" 
+                                           step="0.01" min="0" placeholder="0.00" 
+                                           value="{{ form.custo_fixo.value|default:'0.00' }}" required>
+                                    {% if form.custo_fixo.errors %}
+                                    <div class="text-danger small mt-1">
+                                        {{ form.custo_fixo.errors.0 }}
+                                    </div>
+                                    {% endif %}
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="form-section">
+                            <h4 class="section-title">Valores e Disponibilidade</h4>
+                            <div class="row">
+                                <div class="col-md-6 mb-3">
+                                    <label class="form-label">Valor Unitário (R$) *</label>
+                                    <input type="number" class="form-control" name="valor_unitario" 
+                                           step="0.01" min="0" placeholder="0.00" 
+                                           value="{{ form.valor_unitario.value|default:'' }}" required>
+                                    {% if form.valor_unitario.errors %}
+                                    <div class="text-danger small mt-1">
+                                        {{ form.valor_unitario.errors.0 }}
+                                    </div>
+                                    {% endif %}
+                                </div>
+                                
+                                <div class="col-md-6 mb-3">
+                                    <label class="form-label">Desconto Padrão (%)</label>
+                                    <input type="number" class="form-control" name="desconto" 
+                                           step="1" min="0" max="100" placeholder="0" 
+                                           value="{{ form.desconto.value|default:0 }}">
+                                    {% if form.desconto.errors %}
+                                    <div class="text-danger small mt-1">
+                                        {{ form.desconto.errors.0 }}
+                                    </div>
+                                    {% endif %}
+                                </div>
+                            </div>
+
+                            <div class="row">
+                                <div class="col-md-6 mb-3">
+                                    <div class="form-check form-switch">
+                                        <input class="form-check-input" type="checkbox" 
+                                               name="disponivel" id="disponivel" 
+                                               {% if form.disponivel.value %}checked{% endif %}>
+                                        <label class="form-check-label" for="disponivel">
+                                            Item disponível para orçamentos
+                                        </label>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Preview do Item -->
+                        <div class="form-section">
+                            <h4 class="section-title">Pré-visualização do Item</h4>
+                            <div class="preview-card">
+                                <div class="preview-item">
+                                    <div>
+                                        <h6 class="mb-1" id="previewNome">Nome do Item</h6>
+                                        <p class="mb-1 text-muted small" id="previewDescricao">Descrição do item</p>
+                                        <div class="mt-2">
+                                            <span class="categoria-badge" id="previewCategoria">Categoria</span>
+                                            <span class="disponivel-badge ms-2" id="previewDisponibilidade">Disponível</span>
+                                        </div>
+                                    </div>
+                                    <div class="text-end">
+                                        <div class="h5 text-primary mb-1" id="previewValor">R$ 0,00</div>
+                                        <div class="text-success small" id="previewDesconto">Sem desconto</div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Botões de Ação -->
+                        <div class="d-flex gap-3 justify-content-between pt-3">
+                            <div>
+                                <button type="button" class="btn btn-danger" data-bs-toggle="modal" data-bs-target="#deleteModal">
+                                    <i class="fas fa-trash me-2"></i>Excluir Item
+                                </button>
+                            </div>
+                            <div class="d-flex gap-3">
+                                <button type="reset" class="btn btn-outline-secondary">
+                                    <i class="fas fa-times me-2"></i>Cancelar
+                                </button>
+                                <button type="submit" class="btn btn-primary">
+                                    <i class="fas fa-save me-2"></i>Atualizar Item
+                                </button>
+                            </div>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Modal de Confirmação de Exclusão -->
+<div class="modal fade" id="deleteModal" tabindex="-1" aria-labelledby="deleteModalLabel" aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="deleteModalLabel">
+                    <i class="fas fa-exclamation-triangle text-danger me-2"></i>
+                    Confirmar Exclusão
+                </h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <p>Tem certeza que deseja excluir o item <strong>"{{ item.descricao }}"</strong>?</p>
+                <p class="text-danger mb-0">
+                    <i class="fas fa-info-circle me-2"></i>
+                    Esta ação não pode ser desfeita. O item será removido permanentemente.
+                </p>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">
+                    <i class="fas fa-times me-2"></i>Cancelar
+                </button>
+                <form method="post" action="{% url 'orcamentos:excluir_item' item.id %}" style="display: inline;">
+                    {% csrf_token %}
+                    <button type="submit" class="btn btn-danger">
+                        <i class="fas fa-trash me-2"></i>Excluir Item
+                    </button>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+    document.addEventListener('DOMContentLoaded', function() {
+        // Elementos do preview
+        const previewNome = document.getElementById('previewNome');
+        const previewDescricao = document.getElementById('previewDescricao');
+        const previewCategoria = document.getElementById('previewCategoria');
+        const previewValor = document.getElementById('previewValor');
+        const previewDesconto = document.getElementById('previewDesconto');
+        const previewDisponibilidade = document.getElementById('previewDisponibilidade');
+        
+        // Elementos do formulário
+        const formNome = document.querySelector('input[name="nome"]');
+        const formDescricao = document.querySelector('input[name="descricao"]');
+        const formCategoria = document.querySelector('select[name="categoria"]');
+        const formValor = document.querySelector('input[name="valor_unitario"]');
+        const formDesconto = document.querySelector('input[name="desconto"]');
+        const formDisponivel = document.querySelector('input[name="disponivel"]');
+
+        // Função para atualizar o preview
+        function atualizarPreview() {
+            // Nome (usa descrição se nome estiver vazio)
+            const nome = formNome.value || formDescricao.value || 'Nome do Item';
+            previewNome.textContent = nome;
+            
+            // Descrição
+            previewDescricao.textContent = formDescricao.value || 'Descrição do item';
+            
+            // Categoria
+            const categoria = formCategoria.value || 'outro';
+            const categorias = {
+                'brinquedo': 'Brinquedo',
+                'buffet': 'Buffet',
+                'personalizado': 'Personalizado',
+                'buffet_personalizado': 'Buffet - Personalizado',
+                'servico': 'Serviço',
+                'outro': 'Outro'
+            };
+            previewCategoria.textContent = categorias[categoria] || 'Outro';
+            
+            // Valor
+            const valor = parseFloat(formValor.value) || 0;
+            previewValor.textContent = `R$ ${valor.toFixed(2).replace('.', ',')}`;
+            
+            // Desconto
+            const desconto = parseFloat(formDesconto.value) || 0;
+            if (desconto > 0) {
+                const valorComDesconto = valor * (1 - desconto / 100);
+                previewDesconto.textContent = `Desconto: ${desconto}% → R$ ${valorComDesconto.toFixed(2).replace('.', ',')}`;
+                previewDesconto.className = 'text-success small';
+            } else {
+                previewDesconto.textContent = 'Sem desconto';
+                previewDesconto.className = 'text-muted small';
+            }
+            
+            // Disponibilidade
+            const disponivel = formDisponivel.checked;
+            if (disponivel) {
+                previewDisponibilidade.textContent = 'Disponível';
+                previewDisponibilidade.className = 'disponivel-badge ms-2';
+            } else {
+                previewDisponibilidade.textContent = 'Indisponível';
+                previewDisponibilidade.className = 'indisponivel-badge ms-2';
+            }
+        }
+
+        // Atualizar preview quando os campos mudarem
+        formNome.addEventListener('input', atualizarPreview);
+        formDescricao.addEventListener('input', atualizarPreview);
+        formCategoria.addEventListener('change', atualizarPreview);
+        formValor.addEventListener('input', atualizarPreview);
+        formDesconto.addEventListener('input', atualizarPreview);
+        formDisponivel.addEventListener('change', atualizarPreview);
+
+        // Atualizar preview inicial
+        atualizarPreview();
+
+        // Validação do formulário
+        document.getElementById('itemForm').addEventListener('submit', function(e) {
+            let valid = true;
+            
+            // Validar descrição
+            if (!formDescricao.value.trim()) {
+                valid = false;
+                formDescricao.classList.add('is-invalid');
+            } else {
+                formDescricao.classList.remove('is-invalid');
+            }
+            
+            // Validar valor
+            if (!formValor.value || parseFloat(formValor.value) <= 0) {
+                valid = false;
+                formValor.classList.add('is-invalid');
+            } else {
+                formValor.classList.remove('is-invalid');
+            }
+            
+            // Validar categoria
+            if (!formCategoria.value) {
+                valid = false;
+                formCategoria.classList.add('is-invalid');
+            } else {
+                formCategoria.classList.remove('is-invalid');
+            }
+            
+            if (!valid) {
+                e.preventDefault();
+                // Mostrar mensagem de erro
+                const alertDiv = document.createElement('div');
+                alertDiv.className = 'alert alert-danger alert-dismissible fade show';
+                alertDiv.innerHTML = `
+                    <i class="fas fa-exclamation-circle me-2"></i>
+                    Por favor, preencha todos os campos obrigatórios corretamente.
+                    <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+                `;
+                document.querySelector('.form-body').prepend(alertDiv);
+            }
+        });
+
+        // Formatação automática do valor
+        formValor.addEventListener('blur', function() {
+            if (this.value) {
+                this.value = parseFloat(this.value).toFixed(2);
+            }
+        });
+
+        // Reset do formulário
+        document.querySelector('button[type="reset"]').addEventListener('click', function() {
+            setTimeout(atualizarPreview, 100);
+        });
+    });
+</script>
+{% endblock %}

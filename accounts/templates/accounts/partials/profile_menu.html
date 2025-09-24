@@ -1,0 +1,35 @@
+<!-- accounts/templates/accounts/partials/profile_menu.html -->
+<div class="profile-card">
+    <div class="profile-header">
+        <div class="avatar-container">
+            {% if user.avatar %}
+                <img src="{{ user.avatar.url }}" alt="Avatar" class="avatar-img">
+            {% else %}
+                <div class="avatar-placeholder">
+                    <i class="fas fa-user"></i>
+                </div>
+            {% endif %}
+        </div>
+        <h4>{{ user.get_full_name|default:user.username }}</h4>
+        <p class="mb-0">{{ user.email }}</p>
+        {% if user.empresa %}
+        <span class="badge bg-light text-dark mt-2">
+            <i class="fas fa-building me-1"></i>{{ user.empresa.nome }}
+        </span>
+        {% endif %}
+    </div>
+    
+    <div class="profile-body">
+        <div class="nav flex-column nav-pills">
+            <a class="nav-link {% if request.resolver_match.url_name == 'perfil' %}active{% endif %}" href="{% url 'accounts:perfil' %}">
+                <i class="fas fa-user me-2"></i>Perfil
+            </a>
+            <a class="nav-link {% if request.resolver_match.url_name == 'alterar_senha' %}active{% endif %}" href="{% url 'accounts:alterar_senha' %}">
+                <i class="fas fa-lock me-2"></i>Alterar Senha
+            </a>
+            <a class="nav-link {% if request.resolver_match.url_name == 'configuracoes_empresa' %}active{% endif %}" href="{% url 'accounts:configuracoes_empresa' %}">
+                <i class="fas fa-building me-2"></i>Configurações da Empresa
+            </a>
+        </div>
+    </div>
+</div>

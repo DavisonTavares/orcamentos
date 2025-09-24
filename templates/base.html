@@ -1,0 +1,460 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% block title %}Mundo Kids - Sistema de Orçamentos{% endblock %}</title>
+    
+    <!-- Bootstrap CSS -->
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    
+    <!-- Font Awesome -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    
+    <!-- Google Fonts -->
+    <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    
+    <!-- Custom CSS -->
+    <style>
+        :root {
+            --primary: {{ empresa_theme.primary }};
+            --secondary: {{ empresa_theme.secondary }};
+            --accent: {{ empresa_theme.accent }};
+            
+            /* Variáveis RGB - IMPORTANTE para opacidade */
+            --primary-rgb: {{ empresa_theme.primary|slice:"1" }}{{ empresa_theme.primary|slice:"2" }};
+            --secondary-rgb: {{ empresa_theme.secondary|slice:"1" }}{{ empresa_theme.secondary|slice:"2" }};
+            --accent-rgb: {{ empresa_theme.accent|slice:"1" }}{{ empresa_theme.accent|slice:"2" }};
+        }    
+        
+        body {
+            font-family: 'Poppins', sans-serif;
+            background-color: #f5f7ff;
+            color: var(--dark);
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+        }
+        
+        .navbar-brand {
+            font-weight: 700;
+            color: var(--primary);
+        }
+        
+        .main-content {
+            flex: 1;
+            padding-bottom: 2rem;
+        }
+        
+        .footer {
+            background-color: white;
+            padding: 1.5rem 0;
+            margin-top: auto;
+        }
+        
+        /* Mensagens de alerta estilizadas */
+        .alert-messages {
+            position: fixed;
+            top: 80px;
+            right: 20px;
+            z-index: 1050;
+            min-width: 300px;
+        }
+        
+        /* Loader para operações assíncronas */
+        .loader {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background-color: rgba(255, 255, 255, 0.8);
+            z-index: 9999;
+            justify-content: center;
+            align-items: center;
+        }
+        .text-primary {
+            color: var(--primary) !important;
+        }
+
+        .btn-primary {
+            background-color: var(--primary);
+            border-color: var(--primary);
+        }
+
+        .btn-primary:hover {
+            background-color: var(--secondary);
+            border-color: var(--secondary);
+        }
+
+        .btn-outline-primary {
+            color: var(--primary);
+            border-color: var(--primary);
+        }
+
+        .btn-outline-primary:hover {
+            background-color: var(--primary);
+            color: white;
+            border-color: var(--primary);
+        }
+
+        .bg-primary {
+            background-color: var(--primary) !important;
+        }
+
+        .bg-primary.bg-opacity-10 {
+            background-color: rgba(var(--primary-rgb), 0.1) !important;
+        }
+
+        .loader-spinner {
+            width: 3rem;
+            height: 3rem;
+        }
+
+        /* Badge para mostrar a empresa */
+        .empresa-badge {
+            background: linear-gradient(45deg, var(--primary), var(--secondary));
+            color: white;
+            padding: 4px 12px;
+            border-radius: 20px;
+            font-size: 0.8rem;
+            font-weight: 500;
+        }
+
+        /* Menu lateral para mobile */
+        @media (max-width: 991.98px) {
+            .navbar-collapse {
+                background: white;
+                padding: 1rem;
+                border-radius: 0 0 10px 10px;
+                box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+            }
+        }
+
+        {% if empresa_theme.dark_mode %}
+        body {
+            background-color: #1a1a1a;
+            color: #ffffff;
+        }
+        
+        .navbar {
+            background-color: #2d2d2d !important;
+        }
+        
+        .profile-card, .form-container {
+            background-color: #2d2d2d;
+            color: #ffffff;
+        }
+        {% endif %}
+        
+    </style>
+    
+    {% block extra_css %}{% endblock %}
+</head>
+<body>
+    <!-- Loader para operações em andamento -->
+    <div class="loader" id="globalLoader">
+        <div class="spinner-border text-primary loader-spinner" role="status">
+            <span class="visually-hidden">Carregando...</span>
+        </div>
+    </div>
+
+    <!-- Navbar -->
+    <nav class="navbar navbar-expand-lg bg-white shadow-sm">
+        <div class="container">
+            <a class="navbar-brand" href="{% url 'orcamentos:lista_orcamentos' %}">
+                {% if user.empresa.logo %}
+                <img src="{{ user.empresa.logo.url }}" alt="Logo" style="height: 40px; object-fit: contain;">
+                {% else %}
+                <i class="fas fa-child me-2"></i> {% if user.empresa %}{{ user.empresa.nome }}{% else %}MINHA EMPRESA{% endif %}
+                {% endif %}
+            </a>
+
+            <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav">
+                <span class="navbar-toggler-icon"></span>
+            </button>
+            
+            <div class="collapse navbar-collapse" id="navbarNav">
+                <ul class="navbar-nav me-auto">
+                    <li class="nav-item">
+                        <a class="nav-link {% if request.resolver_match.url_name == 'lista_orcamentos' %}active{% endif %}" href="{% url 'orcamentos:lista_orcamentos' %}">
+                            <i class="fas fa-file-invoice me-1"></i> Orçamentos
+                        </a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link {% if request.resolver_match.url_name == 'agendamentos' %}active{% endif %}" href="{% url 'orcamentos:agendamentos' %}">
+                            <i class="fas fa-calendar-alt me-1"></i> Agendamentos
+                        </a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link {% if 'cliente' in request.resolver_match.url_name %}active{% endif %}" href="{% url 'orcamentos:lista_clientes' %}">
+                            <i class="fas fa-users me-1"></i> Clientes
+                        </a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link {% if 'item' in request.resolver_match.url_name %}active{% endif %}" href="{% url 'orcamentos:lista_itens' %}">
+                            <i class="fas fa-cube me-1"></i> Itens
+                        </a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link" href="{% url 'relatorios:dashboard' %}">
+                            <i class="fas fa-chart-bar me-1"></i> Relatórios
+                        </a>
+                    </li>
+                </ul>
+                
+                <div class="d-flex align-items-center">
+                    <!-- Notificações -->
+                    <div class="dropdown me-3">
+                        <button class="btn btn-light rounded-circle p-0" type="button" id="notificationsDropdown" data-bs-toggle="dropdown">
+                            <i class="fas fa-bell"></i>
+                            {% if user.notificacoes_nao_lidas %}
+                            <span class="position-absolute top-0 start-100 translate-middle badge rounded-pill bg-danger">
+                                {{ user.notificacoes_nao_lidas }}
+                            </span>
+                            {% endif %}
+                        </button>
+                        <ul class="dropdown-menu dropdown-menu-end" aria-labelledby="notificationsDropdown">
+                            <li><h6 class="dropdown-header">Notificações</h6></li>
+                            <li><a class="dropdown-item" href="#">
+                                <i class="fas fa-info-circle me-2 text-info"></i>
+                                Sistema em modo SAAS
+                            </a></li>
+                            <li><hr class="dropdown-divider"></li>
+                            <li><a class="dropdown-item text-center small" href="#">
+                                Ver todas as notificações
+                            </a></li>
+                        </ul>
+                    </div>
+                    
+                    <!-- Perfil do usuário -->
+                    <div class="dropdown">
+                        <button class="btn d-flex align-items-center" type="button" id="userDropdown" data-bs-toggle="dropdown">
+                            <div class="bg-primary rounded-circle d-flex align-items-center justify-content-center me-2" style="width: 35px; height: 35px;">
+                                <span class="text-white">
+                                    {% if user.first_name %}{{ user.first_name|first }}{{ user.last_name|first }}{% else %}{{ user.username|first|upper }}{% endif %}
+                                </span>
+                            </div>
+                            <span class="d-none d-md-inline">
+                                {% if user.first_name %}{{ user.first_name }}{% else %}{{ user.username }}{% endif %}
+                            </span>
+                        </button>
+                        <ul class="dropdown-menu dropdown-menu-end" aria-labelledby="userDropdown">
+                            <li><h6 class="dropdown-header">Minha Conta</h6></li>
+                            <li>
+                                <a class="dropdown-item" href="{% url 'accounts:perfil' %}">
+                                    <i class="fas fa-user me-2"></i>Perfil
+                                </a>
+                            </li>
+                            <li>
+                                <a class="dropdown-item" href="{% url 'accounts:configuracoes_empresa' %}">
+                                    <i class="fas fa-cog me-2"></i>Configurações
+                                </a>
+                            </li>
+                            <li>
+                                <a class="dropdown-item" href="{% url 'accounts:configuracoes_empresa' %}">
+                                    <i class="fas fa-building me-2"></i>Minha Empresa
+                                </a>
+                            </li>
+                            <li><hr class="dropdown-divider"></li>
+                            <li>
+                                <form method="post" action="{% url 'accounts:logout' %}" id="logoutForm">
+                                    {% csrf_token %}
+                                    <a class="dropdown-item" href="#" onclick="document.getElementById('logoutForm').submit();">
+                                        <i class="fas fa-sign-out-alt me-2"></i>Sair
+                                    </a>
+                                </form>
+                            </li>
+                        </ul>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </nav>
+
+    <!-- Container principal -->
+    <main class="main-content">
+        <div class="container py-4">
+            <!-- Mensagens de alerta -->
+            {% if messages %}
+            <div class="alert-messages">
+                {% for message in messages %}
+                <div class="alert alert-{{ message.tags }} alert-dismissible fade show shadow-sm" role="alert">
+                    <div class="d-flex align-items-center">
+                        {% if message.tags == 'success' %}
+                        <i class="fas fa-check-circle me-2"></i>
+                        {% elif message.tags == 'error' or message.tags == 'danger' %}
+                        <i class="fas fa-exclamation-circle me-2"></i>
+                        {% elif message.tags == 'warning' %}
+                        <i class="fas fa-exclamation-triangle me-2"></i>
+                        {% elif message.tags == 'info' %}
+                        <i class="fas fa-info-circle me-2"></i>
+                        {% endif %}
+                        <div>{{ message }}</div>
+                    </div>
+                    <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+                </div>
+                {% endfor %}
+            </div>
+            {% endif %}
+
+            <!-- Conteúdo específico de cada página -->
+            {% block content %}
+            {% endblock %}
+        </div>
+    </main>
+
+    <!-- Footer -->
+    <footer class="footer mt-auto">
+        <div class="container">
+            <div class="row align-items-center">
+                <div class="col-md-6">
+                    <p class="mb-0 text-muted">
+                        &copy; {% now "Y" %} Mundo Kids - Sistema de Orçamentos SAAS. Todos os direitos reservados.
+                    </p>
+                </div>
+                <div class="col-md-6 text-md-end">
+                    <p class="mb-0 text-muted">
+                        {% if user.empresa %}
+                        <span class="empresa-badge">
+                            <i class="fas fa-building me-1"></i>{{ user.empresa.nome }}
+                        </span>
+                        {% endif %}
+                        <span class="ms-2">Versão 2.0.0</span>
+                    </p>
+                </div>
+            </div>
+        </div>
+    </footer>
+
+    <!-- Bootstrap JS -->
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    
+    <!-- jQuery -->
+    <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+    
+    <!-- Custom JS -->
+    <script>
+        // Função para mostrar/ocultar o loader global
+        function showLoader() {
+            document.getElementById('globalLoader').style.display = 'flex';
+        }
+        
+        function hideLoader() {
+            document.getElementById('globalLoader').style.display = 'none';
+        }
+        
+        // Fechar automaticamente alerts após 5 segundos
+        document.addEventListener('DOMContentLoaded', function() {
+            setTimeout(function() {
+                const alerts = document.querySelectorAll('.alert');
+                alerts.forEach(function(alert) {
+                    const bsAlert = new bootstrap.Alert(alert);
+                    bsAlert.close();
+                });
+            }, 5000);
+            
+            // Adicionar classe active aos itens do menu baseado na URL atual
+            const currentUrl = window.location.pathname;
+            document.querySelectorAll('.navbar-nav .nav-link').forEach(link => {
+                if (link.getAttribute('href') === currentUrl) {
+                    link.classList.add('active');
+                }
+            });
+
+            // Verificar se o usuário tem empresa associada
+            {% if not user.empresa %}
+            showNotification('warning', 'Você não tem uma empresa associada. Algumas funcionalidades podem estar limitadas.');
+            {% endif %}
+        });
+        
+        // Função para fazer requisições AJAX com loader
+        function makeRequest(url, options = {}) {
+            showLoader();
+            
+            return fetch(url, {
+                headers: {
+                    'X-Requested-With': 'XMLHttpRequest',
+                    'X-CSRFToken': getCookie('csrftoken'),
+                    ...options.headers
+                },
+                ...options
+            })
+            .then(response => {
+                hideLoader();
+                return response;
+            })
+            .catch(error => {
+                hideLoader();
+                console.error('Erro na requisição:', error);
+                throw error;
+            });
+        }
+
+        // Função para obter cookie CSRF
+        function getCookie(name) {
+            let cookieValue = null;
+            if (document.cookie && document.cookie !== '') {
+                const cookies = document.cookie.split(';');
+                for (let i = 0; i < cookies.length; i++) {
+                    const cookie = cookies[i].trim();
+                    if (cookie.substring(0, name.length + 1) === (name + '=')) {
+                        cookieValue = decodeURIComponent(cookie.substring(name.length + 1));
+                        break;
+                    }
+                }
+            }
+            return cookieValue;
+        }
+
+        // Função para mostrar notificações
+        function showNotification(type, message) {
+            const alertDiv = document.createElement('div');
+            alertDiv.className = `alert alert-${type} alert-dismissible fade show`;
+            alertDiv.innerHTML = `
+                <i class="fas fa-${getIconForType(type)} me-2"></i>
+                ${message}
+                <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+            `;
+            
+            // Criar container se não existir
+            let container = document.querySelector('.alert-messages');
+            if (!container) {
+                container = document.createElement('div');
+                container.className = 'alert-messages';
+                document.body.appendChild(container);
+            }
+            
+            container.appendChild(alertDiv);
+            
+            // Auto-remover após 5 segundos
+            setTimeout(() => {
+                const bsAlert = new bootstrap.Alert(alertDiv);
+                bsAlert.close();
+            }, 5000);
+        }
+
+        function getIconForType(type) {
+            const icons = {
+                'success': 'check-circle',
+                'danger': 'exclamation-circle',
+                'warning': 'exclamation-triangle',
+                'info': 'info-circle'
+            };
+            return icons[type] || 'info-circle';
+        }
+
+        // Verificar acesso à empresa
+        function checkEmpresaAccess() {
+            {% if not user.empresa %}
+            showNotification('warning', 'Você precisa ter uma empresa associada para acessar esta funcionalidade.');
+            return false;
+            {% endif %}
+            return true;
+        }
+    </script>
+    
+    {% block extra_js %}{% endblock %}
+</body>
+</html>

@@ -1,0 +1,164 @@
+{% extends "base.html" %}
+{% load static %}
+
+{% block title %}Confirmar Exclusão - Mundo Kids{% endblock %}
+
+{% block content %}
+<style>
+    :root {
+        --primary: {{ empresa_theme.primary }};
+        --secondary: {{ empresa_theme.secondary }};
+        --accent: {{ empresa_theme.accent }};
+        --light: #F8FAFC;
+        --dark: #1E293B;
+        --success: #10B981;
+        --warning: #F59E0B;
+        --danger: #EF4444;
+        --info: #3B82F6;
+        
+        /* Variáveis RGB para opacidade */
+        --primary-rgb: {{ empresa_theme.primary|slice:"1" }}{{ empresa_theme.primary|slice:"2" }};
+        --secondary-rgb: {{ empresa_theme.secondary|slice:"1" }}{{ empresa_theme.secondary|slice:"2" }};
+        --accent-rgb: {{ empresa_theme.accent|slice:"1" }}{{ empresa_theme.accent|slice:"2" }};
+    }
+
+    body {
+        font-family: 'Poppins', sans-serif;
+        background: linear-gradient(135deg, #f5f7ff 0%, #e6f2ff 100%);
+        color: var(--dark);
+        min-height: 100vh;
+    }
+
+    .navbar-brand {
+        font-weight: 700;
+        color: var(--primary);
+    }
+
+    .form-container {
+        background: white;
+        border-radius: 20px;
+        box-shadow: 0 10px 30px rgba(36, 99, 235, 0.15);
+        overflow: hidden;
+        margin: 2rem auto;
+        max-width: 600px;
+    }
+
+    .form-header {
+        background: linear-gradient(120deg, var(--danger), #EF4444);
+        color: white;
+        padding: 25px 30px;
+        text-align: center;
+    }
+
+    .alert-danger {
+        background: linear-gradient(120deg, #FEE2E2, #FECACA);
+        border: none;
+        border-radius: 12px;
+        color: #DC2626;
+    }
+
+    .orcamento-card {
+        background: var(--light);
+        border-radius: 12px;
+        padding: 20px;
+        margin-bottom: 20px;
+        border-left: 4px solid var(--danger);
+    }
+
+    .btn-danger {
+        background: linear-gradient(120deg, var(--danger), #DC2626);
+        border: none;
+        color: white;
+        border-radius: 12px;
+        padding: 12px 24px;
+        font-weight: 600;
+        transition: all 0.3s;
+    }
+
+    .btn-danger:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 5px 15px rgba(239, 68, 68, 0.3);
+    }
+
+    .btn-outline-secondary:hover {
+        background-color: var(--secondary);
+        border-color: var(--secondary);
+        color: white;
+    }
+
+    .btn-outline-secondary {        
+        border: 2px solid var(--secondary);
+        color: var(--secondary);         
+        border-radius: 12px;  
+        padding: 12px 24px;
+        font-weight: 600;
+    }
+</style>
+
+<!-- Conteúdo Principal -->
+<div class="container py-4">
+    <div class="row justify-content-center">
+        <div class="col-lg-8">
+            <div class="form-container">
+                <div class="form-header">
+                    <h2><i class="fas fa-trash-alt me-2"></i> Confirmar Exclusão</h2>
+                    <p class="mb-0">Tem certeza que deseja excluir este orçamento?</p>
+                </div>
+
+                <div class="form-body p-4">
+                    <div class="alert alert-danger mb-4">
+                        <h5><i class="fas fa-exclamation-triangle me-2"></i>Atenção!</h5>
+                        <p class="mb-0">Esta ação não pode ser desfeita. O orçamento será permanentemente excluído do sistema.</p>
+                    </div>
+
+                    <h4 class="section-title mb-3">Detalhes do Orçamento</h4>
+                    
+                    <div class="orcamento-card">
+                        <div class="row">
+                            <div class="col-md-6">
+                                <h6 class="fw-bold">#{{ orcamento.id }} - {{ orcamento.cliente.nome }}</h6>
+                                <p class="mb-1"><i class="fas fa-phone me-2"></i>{{ orcamento.cliente.telefone }}</p>
+                                <p class="mb-1"><i class="fas fa-calendar me-2"></i>{{ orcamento.data_evento|date:"d/m/Y" }}</p>
+                            </div>
+                            <div class="col-md-6">
+                                <p class="mb-1"><i class="fas fa-clock me-2"></i>{{ orcamento.hora_evento }} ({{ orcamento.periodo_evento }} horas)</p>
+                                <p class="mb-1"><i class="fas fa-tag me-2"></i>{{ orcamento.tipo_evento }}</p>
+                                <p class="mb-0"><i class="fas fa-money-bill me-2"></i>Total: R$ {{ orcamento.valor_total }}</p>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="mt-4 p-3 bg-light rounded">
+                        <h6 class="fw-bold mb-2"><i class="fas fa-info-circle me-2"></i>Informações Adicionais</h6>
+                        <p class="mb-0">Status: <span class="badge bg-{% if orcamento.status == 'aprovado' %}success{% elif orcamento.status == 'pendente' %}warning{% else %}secondary{% endif %}">{{ orcamento.status }}</span></p>
+                        <p class="mb-0">Criado em: {{ orcamento.criado_em|date:"d/m/Y H:i" }}</p>
+                        {% if orcamento.observacoes %}
+                        <p class="mb-0 mt-2">Observações: {{ orcamento.observacoes }}</p>
+                        {% endif %}
+                    </div>
+
+                    <form method="post" class="mt-4">
+                        {% csrf_token %}
+                        
+                        <div class="form-check mb-4">
+                            <input class="form-check-input" type="checkbox" id="confirmacao" name="confirmacao" required>
+                            <label class="form-check-label" for="confirmacao">
+                                Confirmo que desejo excluir permanentemente este orçamento
+                            </label>
+                        </div>
+                        
+                        <div class="d-flex gap-3 justify-content-end pt-3">
+                            <a href="{% url 'orcamentos:detalhes_orcamento' orcamento.id %}" class="btn btn-outline-secondary">
+                                <i class="fas fa-arrow-left me-2"></i>Voltar
+                            </a>
+                            <button type="submit" class="btn btn-danger">
+                                <i class="fas fa-trash-alt me-2"></i>Excluir Permanentemente
+                            </button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

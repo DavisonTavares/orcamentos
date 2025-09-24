@@ -1,0 +1,116 @@
+{% extends "base.html" %}
+{% load static %}
+
+{% block title %}Lista de Itens - Mundo Kids{% endblock %}
+
+{% block content %}
+<style>
+    :root {
+            --primary: {{ empresa_theme.primary }};
+            --secondary: {{ empresa_theme.secondary }};
+            --accent: {{ empresa_theme.accent }};
+            --light: #F8FAFC;
+            --dark: #1E293B;
+            --success: #10B981;
+        }    
+    .item-card {
+        background: white;
+        border-radius: 12px;
+        padding: 20px;
+        margin-bottom: 20px;
+        box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        transition: all 0.3s;
+    }
+    
+    .item-card:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 4px 20px rgba(0,0,0,0.15);
+    }
+    
+    .categoria-badge {
+        background: var(--primary);
+        color: white;
+        padding: 4px 12px;
+        border-radius: 20px;
+        font-size: 0.8rem;
+    }
+    
+    .disponivel-badge {
+        background: var(--success);
+        color: white;
+        padding: 4px 10px;
+        border-radius: 6px;
+        font-size: 0.75rem;
+    }
+    
+    .indisponivel-badge {
+        background: var(--accent);
+        color: white;
+        padding: 4px 10px;
+        border-radius: 6px;
+        font-size: 0.75rem;
+    }
+</style>
+
+<div class="container py-4">
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <h1 class="h3 mb-0">
+            <i class="fas fa-cubes me-2"></i>Itens do Catálogo
+        </h1>
+        <a href="{% url 'orcamentos:adicionar_item' %}" class="btn btn-primary">
+            <i class="fas fa-plus me-2"></i>Novo Item
+        </a>
+    </div>
+
+    <div class="row">
+        {% for item in itens %}
+        <div class="col-md-6 col-lg-4 mb-3">
+            <div class="item-card">
+                <div class="d-flex justify-content-between align-items-start mb-2">
+                    <h6 class="mb-0">{{ item.nome|default:item.descricao|truncatewords:5 }}</h6>
+                    <span class="categoria-badge">{{ item.get_categoria_display }}</span>
+                </div>
+                
+                <p class="text-muted small mb-2">{{ item.descricao|truncatewords:10 }}</p>
+                
+                <div class="d-flex justify-content-between align-items-center mb-2">
+                    <span class="h5 text-primary mb-0">R$ {{ item.valor_unitario }}</span>
+                    {% if item.disponivel %}
+                    <span class="disponivel-badge">Disponível</span>
+                    {% else %}
+                    <span class="indisponivel-badge">Indisponível</span>
+                    {% endif %}
+                </div>
+                
+                {% if item.desconto %}
+                <div class="text-success small mb-3">
+                    <i class="fas fa-tag me-1"></i>Desconto: {{ item.desconto }}%
+                </div>
+                {% endif %}
+                
+                <div class="d-flex gap-2">
+                    <a href="{% url 'orcamentos:editar_item' item.id %}" class="btn btn-sm btn-outline-primary">Editar</a>
+                    <a href="#" class="btn btn-sm btn-outline-danger">Excluir</a>
+                </div>
+
+                <div class="mt-3">
+                    <small class="text-muted">Usado em {{ item.uso_count }} orçamento{% if item.uso_count != 1 %}s{% endif %}</small>
+                    <small class="text-muted float-end">R$ {{ item.faturamento }} faturado</small>
+                </div>
+            </div>
+        </div>
+        {% empty %}
+        <div class="col-12">
+            <div class="text-center py-5">
+                <i class="fas fa-cube fa-3x text-muted mb-3"></i>
+                <h4 class="text-muted">Nenhum item cadastrado</h4>
+                <p class="text-muted">Comece adicionando seu primeiro item ao catálogo.</p>
+                <a href="{% url 'orcamentos:adicionar_item' %}" class="btn btn-primary">
+                    <i class="fas fa-plus me-2"></i>Adicionar Primeiro Item
+                </a>
+            </div>
+        </div>
+        {% endfor %}
+    </div>
+</div>
+{% endblock %}

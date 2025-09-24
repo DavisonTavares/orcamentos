@@ -1,0 +1,482 @@
+{% extends "base.html" %}
+{% load static %}
+
+{% block title %}Novo Cliente - Mundo Kids{% endblock %}
+
+{% block content %}
+<style>
+    :root {
+            --primary: {{ empresa_theme.primary }};
+            --secondary: {{ empresa_theme.secondary }};
+            --accent: {{ empresa_theme.accent }};
+            --light: #F8FAFC;
+            --dark: #1E293B;
+            --success: #10B981;
+        }    
+
+    body {
+        font-family: 'Poppins', sans-serif;
+        background: linear-gradient(135deg, #f5f7ff 0%, #e6f2ff 100%);
+        color: var(--dark);
+        min-height: 100vh;
+    }
+
+    .navbar-brand {
+        font-weight: 700;
+        color: var(--primary);
+    }
+
+    .form-container {
+        background: white;
+        border-radius: 20px;
+        box-shadow: 0 10px 30px rgba(36, 99, 235, 0.15);
+        overflow: hidden;
+        margin: 0rem auto;
+    }
+
+    .form-header {
+        background: linear-gradient(120deg, var(--primary), var(--secondary));
+        color: white;
+        padding: 25px 30px;
+        text-align: center;
+    }
+
+    .form-body {
+        padding: 30px;
+    }
+
+    .form-section {
+        margin-bottom: 30px;
+        padding-bottom: 20px;
+        border-bottom: 1px solid #e2e8f0;
+    }
+
+    .section-title {
+        color: var(--primary);
+        font-weight: 600;
+        margin-bottom: 20px;
+        position: relative;
+        padding-left: 15px;
+    }
+
+    .section-title::before {
+        content: '';
+        position: absolute;
+        left: 0;
+        top: 50%;
+        transform: translateY(-50%);
+        width: 6px;
+        height: 24px;
+        background: var(--primary);
+        border-radius: 3px;
+    }
+
+    .form-control,
+    .form-select {
+        border-radius: 12px;
+        padding: 12px 16px;
+        border: 1px solid #e2e8f0;
+        transition: all 0.3s;
+    }
+
+    .form-control:focus,
+    .form-select:focus {
+        border-color: var(--primary);
+        box-shadow: 0 0 0 3px rgba(36, 99, 235, 0.2);
+    }
+
+    .item-card {
+        background: var(--light);
+        border-radius: 12px;
+        padding: 15px;
+        margin-bottom: 15px;
+        border: 1px solid #e2e8f0;
+        transition: all 0.3s;
+    }
+
+    .item-card:hover {
+        border-color: var(--primary);
+        box-shadow: 0 5px 15px rgba(36, 99, 235, 0.1);
+    }
+
+    .quantity-input {
+        width: 80px;
+        text-align: center;
+        border-radius: 8px;
+        border: 1px solid #e2e8f0;
+        padding: 8px;
+    }
+
+    .btn-primary {
+        background: linear-gradient(120deg, var(--primary), var(--secondary));
+        border: none;
+        border-radius: 12px;
+        padding: 12px 24px;
+        font-weight: 600;
+        transition: all 0.3s;
+    }
+
+    .btn-primary:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 5px 15px rgba(36, 99, 235, 0.3);
+    }
+
+    .btn-outline-primary {
+        border-radius: 12px;
+        padding: 12px 24px;
+        font-weight: 600;
+    }
+
+    .summary-card {
+        background: var(--light);
+        border-radius: 15px;
+        padding: 20px;
+        position: sticky;
+        top: 20px;
+    }
+
+    .summary-item {
+        display: flex;
+        justify-content: space-between;
+        padding: 10px 0;
+        border-bottom: 1px dashed #e2e8f0;
+    }
+
+    .total-price {
+        font-size: 1.5rem;
+        font-weight: 700;
+        color: var(--primary);
+    }
+
+    .discount-badge {
+        background: var(--accent);
+        color: white;
+        padding: 4px 10px;
+        border-radius: 20px;
+        font-size: 0.8rem;
+        font-weight: 500;
+    }
+
+    .item-badge {
+        background: var(--primary);
+        color: white;
+        padding: 4px 8px;
+        border-radius: 6px;
+        font-size: 0.75rem;
+        font-weight: 500;
+    }
+
+    .search-box {
+        position: relative;
+    }
+
+    .search-box i {
+        position: absolute;
+        left: 15px;
+        top: 50%;
+        transform: translateY(-50%);
+        color: #94a3b8;
+    }
+
+    .search-box input {
+        padding-left: 45px;
+    }
+
+    .toast-container {
+        position: fixed;
+        bottom: 20px;
+        right: 20px;
+        z-index: 1050;
+    }
+
+    @media (max-width: 768px) {
+        .form-container {
+            margin: 1rem;
+        }
+
+        .form-body {
+            padding: 20px;
+        }
+    }
+</style>
+
+<!-- Conteúdo Principal -->
+<div class="container py-4">
+    <div class="row justify-content-center">
+        <div class="col-lg-8">
+            <div class="form-container">
+                <div class="form-header">
+                    <h2><i class="fas fa-user-plus me-2"></i> Novo Cliente</h2>
+                    <p class="mb-0">Cadastre um novo cliente no sistema</p>
+                </div>
+
+                <div class="form-body">
+                    <form id="clienteForm">
+                        {% csrf_token %}
+                        
+                        <!-- Dados Pessoais -->
+                        <div class="form-section">
+                            <h4 class="section-title">Dados Pessoais</h4>
+                            
+                            <div class="row">
+                                <div class="col-md-12 mb-3">
+                                    <label class="form-label">Nome Completo *</label>
+                                    <input type="text" class="form-control" id="nome" name="nome" 
+                                           placeholder="Digite o nome completo" required>
+                                </div>
+                            </div>
+
+                            <div class="row">
+                                <div class="col-md-6 mb-3">
+                                    <label class="form-label">Telefone *</label>
+                                    <input type="tel" class="form-control" id="telefone" name="telefone" 
+                                           placeholder="(83) 9 9999-9999" required>
+                                </div>
+                                <div class="col-md-6 mb-3">
+                                    <label class="form-label">E-mail</label>
+                                    <input type="email" class="form-control" id="email" name="email" 
+                                           placeholder="cliente@email.com">
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Endereço -->
+                        <div class="form-section">
+                            <h4 class="section-title">Endereço</h4>
+                            
+                            <div class="row">
+                                <div class="col-md-8 mb-3">
+                                    <label class="form-label">Logradouro</label>
+                                    <input type="text" class="form-control" id="logradouro" name="logradouro" 
+                                           placeholder="Rua, Avenida, etc.">
+                                </div>
+                                <div class="col-md-4 mb-3">
+                                    <label class="form-label">Número</label>
+                                    <input type="text" class="form-control" id="numero" name="numero" 
+                                           placeholder="Nº">
+                                </div>
+                            </div>
+
+                            <div class="row">
+                                <div class="col-md-6 mb-3">
+                                    <label class="form-label">Bairro</label>
+                                    <input type="text" class="form-control" id="bairro" name="bairro" 
+                                           placeholder="Bairro">
+                                </div>
+                                <div class="col-md-6 mb-3">
+                                    <label class="form-label">Cidade</label>
+                                    <input type="text" class="form-control" id="cidade" name="cidade" 
+                                           placeholder="Cidade" value="João Pessoa">
+                                </div>
+                            </div>
+
+                            <div class="row">
+                                <div class="col-md-6 mb-3">
+                                    <label class="form-label">Estado</label>
+                                    <select class="form-select" id="estado" name="estado">
+                                        <option value="PB" selected>Paraíba</option>
+                                        <option value="PE">Pernambuco</option>
+                                        <option value="RN">Rio Grande do Norte</option>
+                                        <option value="CE">Ceará</option>
+                                        <option value="MA">Maranhão</option>
+                                        <option value="AL">Alagoas</option>
+                                        <option value="SE">Sergipe</option>
+                                        <option value="BA">Bahia</option>
+                                    </select>
+                                </div>
+                                <div class="col-md-6 mb-3">
+                                    <label class="form-label">CEP</label>
+                                    <input type="text" class="form-control" id="cep" name="cep" 
+                                           placeholder="58000-000">
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Observações -->
+                        <div class="form-section">
+                            <h4 class="section-title">Informações Adicionais</h4>
+                            
+                            <div class="mb-3">
+                                <label class="form-label">Observações</label>
+                                <textarea class="form-control" id="observacoes" name="observacoes" 
+                                          rows="3" placeholder="Informações adicionais sobre o cliente"></textarea>
+                            </div>
+
+                            <div class="form-check mb-3">
+                                <input class="form-check-input" type="checkbox" id="whatsapp" name="whatsapp">
+                                <label class="form-check-label" for="whatsapp">
+                                    Este telefone possui WhatsApp
+                                </label>
+                            </div>
+                        </div>
+
+                        <!-- Botões de Ação -->
+                        <div class="d-flex gap-3 justify-content-end pt-3">
+                            <a href="{% url 'orcamentos:novo_orcamento' %}" class="btn btn-outline-secondary">
+                                <i class="fas fa-times me-2"></i>Cancelar
+                            </a>
+                            <button type="submit" class="btn btn-primary">
+                                <i class="fas fa-save me-2"></i>Salvar Cliente
+                            </button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Container para notificações toast -->
+<div class="toast-container"></div>
+
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+<script>
+    // Função para mostrar notificações toast
+    function mostrarToast(mensagem, tipo = 'success') {
+        const toastContainer = document.querySelector('.toast-container');
+        const toastId = 'toast-' + Date.now();
+
+        const toastHTML = `
+            <div id="${toastId}" class="toast align-items-center text-white bg-${tipo} border-0" role="alert">
+                <div class="d-flex">
+                    <div class="toast-body">${mensagem}</div>
+                    <button type="button" class="btn-close btn-close-white me-2 m-auto" data-bs-dismiss="toast"></button>
+                </div>
+            </div>
+        `;
+
+        toastContainer.insertAdjacentHTML('beforeend', toastHTML);
+
+        const toastElement = document.getElementById(toastId);
+        const toast = new bootstrap.Toast(toastElement);
+        toast.show();
+
+        toastElement.addEventListener('hidden.bs.toast', function () {
+            toastElement.remove();
+        });
+    }
+
+    // Máscara para telefone
+    function mascaraTelefone(telefone) {
+        const texto = telefone.value.replace(/\D/g, '');
+        if (texto.length === 11) {
+            telefone.value = texto.replace(/(\d{2})(\d{5})(\d{4})/, '($1) $2-$3');
+        } else if (texto.length === 10) {
+            telefone.value = texto.replace(/(\d{2})(\d{4})(\d{4})/, '($1) $2-$3');
+        }
+    }
+
+    // Máscara para CEP
+    function mascaraCEP(cep) {
+        cep.value = cep.value.replace(/\D/g, '')
+                            .replace(/(\d{5})(\d)/, '$1-$2')
+                            .slice(0, 9);
+    }
+
+    function SalvarCliente() {
+        nome = document.getElementById('nome').value;
+        telefone = document.getElementById('telefone').value;
+        email = document.getElementById('email').value;
+        logradouro = document.getElementById('logradouro').value;
+        numero = document.getElementById('numero').value;
+        bairro = document.getElementById('bairro').value;
+        cidade = document.getElementById('cidade').value;
+        estado = document.getElementById('estado').value;
+        cep = document.getElementById('cep').value;
+        observacoes = document.getElementById('observacoes').value;
+        whatsapp = document.getElementById('whatsapp').checked;
+
+        endereco = logradouro + ', ' + numero + ', ' + bairro + ', ' + cidade + ', ' + estado + ', ' + cep;
+
+        fetch("{% url 'orcamentos:adicionar_cliente' %}", {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-CSRFToken': '{{ csrf_token }}'
+            },
+            body: JSON.stringify({
+                nome: nome,
+                telefone: telefone,
+                email: email,
+                endereco: endereco,
+                observacoes: observacoes,
+            })
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.sucesso) {
+                mostrarToast('Cliente salvo com sucesso!', 'success');
+                setTimeout(() => {
+                    window.location.href = "{% url 'orcamentos:novo_orcamento' %}";
+                }, 1500);
+            } else {
+                mostrarToast('Erro ao salvar cliente. Tente novamente.', 'danger');
+            }
+        })
+        .catch(error => {
+            console.error('Erro:', error);
+            mostrarToast('Erro ao salvar cliente. Tente novamente.', 'danger');
+        });
+    }
+    // Event listeners
+    document.addEventListener('DOMContentLoaded', function () {
+        // Aplicar máscaras
+        const telefoneInput = document.getElementById('telefone');
+        const cepInput = document.getElementById('cep');
+
+        if (telefoneInput) {
+            telefoneInput.addEventListener('input', function () {
+                mascaraTelefone(this);
+            });
+        }
+
+        if (cepInput) {
+            cepInput.addEventListener('input', function () {
+                mascaraCEP(this);
+            });
+        }
+
+        // Validação do formulário
+        const form = document.getElementById('clienteForm');
+        if (form) {
+            form.addEventListener('submit', function (e) {
+                e.preventDefault();
+                
+                // Validação básica
+                const nome = document.getElementById('nome').value.trim();
+                const telefone = document.getElementById('telefone').value.trim();
+
+                if (!nome) {
+                    mostrarToast('Por favor, informe o nome do cliente', 'danger');
+                    return;
+                }
+
+                if (!telefone) {
+                    mostrarToast('Por favor, informe o telefone do cliente', 'danger');
+                    return;
+                }
+
+                // Se validação passar, enviar formulário
+                SalvarCliente();
+            });
+        }
+
+        // Preencher automaticamente com dados de exemplo (para teste)
+        function preencherDadosExemplo() {
+            document.getElementById('nome').value = 'Maria Silva Santos';
+            document.getElementById('telefone').value = '(83) 9 9999-8888';
+            document.getElementById('email').value = 'maria.silva@email.com';
+            document.getElementById('logradouro').value = 'Rua das Flores';
+            document.getElementById('numero').value = '123';
+            document.getElementById('bairro').value = 'Centro';
+            document.getElementById('cep').value = '58000-000';
+        }
+
+        // Descomente a linha abaixo para teste rápido (depois remova)
+        // preencherDadosExemplo();
+    });
+
+    // Tornar funções globais se necessário
+    window.mostrarToast = mostrarToast;
+</script>
+{% endblock %}

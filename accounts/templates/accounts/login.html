@@ -1,0 +1,288 @@
+
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Login - Mundo Kids</title>
+    
+    <!-- Bootstrap CSS -->
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    
+    <!-- Font Awesome -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    
+    <!-- Google Fonts -->
+    <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+</head>
+<body>
+    <!-- Mensagens de erro do Django (ocultas, usadas pelo JavaScript) -->
+    {% if form.errors %}
+    <div id="django-form-errors" style="display: none;">true</div>
+    {% endif %}
+    
+    {% if next %}
+    <div id="django-next-url" style="display: none;">{{ next }}</div>
+    {% if user.is_authenticated %}
+    <div id="django-user-authenticated" style="display: none;">true</div>
+    {% endif %}
+    {% endif %}
+
+<style>
+    :root {
+            --primary: {{ empresa_theme.primary }};
+            --secondary: {{ empresa_theme.secondary }};
+            --accent: {{ empresa_theme.accent }};
+            --light: #F8FAFC;
+            --dark: #1E293B;
+            --success: #10B981;
+    }    
+    body, html {
+        margin: 0;
+        padding: 0;
+        background: var(--light);
+    }
+
+    .login-page {
+        font-family: 'Poppins', sans-serif;
+        background: linear-gradient(135deg, #f5f7ff 0%, #e6f2ff 100%);
+        color: var(--dark);
+        min-height: 100vh;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        margin: 0;
+    }
+
+    .login-container {
+        background: white;
+        border-radius: 20px;
+        box-shadow: 0 10px 30px rgba(36, 99, 235, 0.15);
+        overflow: hidden;
+        width: 100%;
+        max-width: 400px;
+    }
+
+    .login-header {
+        background: linear-gradient(120deg, var(--primary), var(--secondary));
+        color: white;
+        padding: 25px 30px;
+        text-align: center;
+    }
+
+    .login-header h2 {
+        margin: 0;
+        font-size: 1.5rem;
+        font-weight: 600;
+    }
+
+    .login-header p {
+        margin: 5px 0 0 0;
+        opacity: 0.9;
+    }
+
+    .login-body {
+        padding: 30px;
+    }
+
+    .form-group {
+        margin-bottom: 20px;
+    }
+
+    .form-label {
+        display: block;
+        margin-bottom: 8px;
+        font-weight: 500;
+        color: var(--dark);
+    }
+
+    .form-control {
+        width: 100%;
+        border-radius: 12px;
+        padding: 12px 16px;
+        border: 1px solid #e2e8f0;
+        transition: all 0.3s;
+        box-sizing: border-box;
+        font-family: 'Poppins', sans-serif;
+    }
+
+    .form-control:focus {
+        border-color: var(--primary);
+        box-shadow: 0 0 0 3px rgba(36, 99, 235, 0.2);
+        outline: none;
+    }
+
+    .btn-primary {
+        background: linear-gradient(120deg, var(--primary), var(--secondary));
+        border: none;
+        border-radius: 12px;
+        padding: 12px 24px;
+        font-weight: 600;
+        transition: all 0.3s;
+        width: 100%;
+        color: white;
+        cursor: pointer;
+        font-family: 'Poppins', sans-serif;
+        font-size: 1rem;
+    }
+
+    .btn-primary:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 5px 15px rgba(36, 99, 235, 0.3);
+    }
+
+    .form-footer {
+        text-align: center;
+        margin-top: 20px;
+        padding-top: 20px;
+        border-top: 1px solid #e2e8f0;
+    }
+
+    .form-footer p {
+        margin: 0;
+        color: #64748B;
+        font-size: 0.875rem;
+    }
+
+    .error-message {
+        background-color: #FFEBEE;
+        color: #D32F2F;
+        padding: 12px 16px;
+        border-radius: 8px;
+        margin-bottom: 20px;
+        text-align: center;
+        display: none;
+        font-size: 0.9rem;
+    }
+
+    @media (max-width: 480px) {
+        .login-page {
+            padding: 10px;
+        }
+        
+        .login-container {
+            border-radius: 15px;
+        }
+        
+        .login-body {
+            padding: 20px;
+        }
+    }
+
+    /* Garantir que todos os elementos usem a mesma fonte */
+    body, input, button, label {
+        font-family: 'Poppins', sans-serif;
+    }
+</style>
+
+<div class="login-page">
+    <div class="login-container">
+        <div class="login-header">
+            <h2><i class="fas fa-lock me-2"></i> Acesso Restrito</h2>
+            <p class="mb-0">Sistema de Orçamentos - Mundo Kids</p>
+        </div>
+
+        <div class="login-body">
+            <form method="post" action="{% url 'accounts:login' %}">
+                {% csrf_token %}
+                
+                <div class="form-group">
+                    <label for="username" class="form-label">Usuário</label>
+                    <input type="text" class="form-control" id="username" name="username" 
+                           placeholder="Digite seu nome de usuário" required autofocus>
+                </div>
+                
+                <div class="form-group">
+                    <label for="password" class="form-label">Senha</label>
+                    <input type="password" class="form-control" id="password" name="password" 
+                           placeholder="Digite sua senha" required>
+                </div>
+                
+                <input type="hidden" name="next" value="{{ next|default:'/agendamentos/' }}">
+                
+                <button type="submit" class="btn btn-primary">
+                    <i class="fas fa-sign-in-alt me-2"></i>Entrar
+                </button>
+            </form>
+            
+            <div class="form-footer">
+                <p class="small text-muted">
+                    Problemas para acessar? Entre em contato com o administrador.
+                </p>
+            </div>
+        </div>
+    </div>
+    <div class="toast-container position-fixed top-0 end-0 p-3" style="z-index: 1100">
+        <!-- Toasts serão inseridos aqui via JavaScript -->
+    </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+<script>
+    document.addEventListener('DOMContentLoaded', function() {
+        // Função para mostrar notificações toast
+        function mostrarToast(mensagem, tipo = 'danger') {
+            const toastContainer = document.querySelector('.toast-container');
+            const toastId = 'toast-' + Date.now();
+            
+            const icon = tipo === 'danger' ? 'exclamation-triangle' : 'info-circle';
+            
+            const toastHTML = `
+                <div id="${toastId}" class="toast" role="alert" aria-live="assertive" aria-atomic="true">
+                    <div class="toast-header">
+                        <i class="fas fa-${icon} text-${tipo} me-2"></i>
+                        <strong class="me-auto">Mundo Kids</strong>
+                        <button type="button" class="btn-close" data-bs-dismiss="toast" aria-label="Close"></button>
+                    </div>
+                    <div class="toast-body">
+                        ${mensagem}
+                    </div>
+                </div>
+            `;
+            
+            toastContainer.insertAdjacentHTML('beforeend', toastHTML);
+            
+            const toastElement = document.getElementById(toastId);
+            const toast = new bootstrap.Toast(toastElement);
+            toast.show();
+            
+            // Remover o toast do DOM após ser escondido
+            toastElement.addEventListener('hidden.bs.toast', function() {
+                toastElement.remove();
+            });
+        }
+        
+        // Verificar se há erros de formulário do Django
+        {% if form.errors %}
+            setTimeout(function() {
+                mostrarToast('Usuário ou senha incorretos. Por favor, tente novamente.');
+            }, 500);
+        {% endif %}
+        
+        // Verificar se há redirecionamento por falta de permissão
+        {% if next %}
+            {% if user.is_authenticated %}
+                setTimeout(function() {
+                    mostrarToast('Sua conta não tem acesso a esta página.');
+                }, 500);
+            {% else %}
+                setTimeout(function() {
+                    mostrarToast('Por favor, faça login para acessar esta página.');
+                }, 500);
+            {% endif %}
+        {% endif %}
+        
+        // Ajustar o foco para o campo de usuário
+        document.getElementById('username').focus();
+        
+        // Verificar se há parâmetros de erro na URL (para login falho via POST)
+        const urlParams = new URLSearchParams(window.location.search);
+        if (urlParams.has('error')) {
+            setTimeout(function() {
+                mostrarToast('Credenciais inválidas. Tente novamente.');
+            }, 500);
+        }
+    });
+</script>
+</body>
+</html>
