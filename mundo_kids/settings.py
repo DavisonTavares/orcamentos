@@ -21,10 +21,15 @@ SECRET_KEY = env('SECRET_KEY', default='django-insecure-hm_2#$g22uyn(+mjyh5wv%by
 
 DEBUG = env('DEBUG', default=False)
 
-ALLOWED_HOSTS = ['mensalizou.com.br', 'www.mensalizou.com.br', 'localhost', '127.0.0.1']
+ALLOWED_HOSTS = [
+    '.vercel.app',
+    'localhost',
+    '127.0.0.1',
+]
 
 # Application definition
 INSTALLED_APPS = [
+    'whitenoise.runserver_nostatic',  
     'django.contrib.admin',
     'django.contrib.auth',
     'django.contrib.contenttypes',
@@ -38,6 +43,7 @@ INSTALLED_APPS = [
 
 MIDDLEWARE = [
     'django.middleware.security.SecurityMiddleware',
+    'whitenoise.middleware.WhiteNoiseMiddleware',
     'django.contrib.sessions.middleware.SessionMiddleware',
     'django.middleware.common.CommonMiddleware',
     'django.middleware.csrf.CsrfViewMiddleware',
