@@ -5,6 +5,8 @@ Django settings for mundo_kids project.
 from pathlib import Path
 import os
 import environ
+import pymysql
+pymysql.install_as_MySQLdb()
 
 # Inicialização do environ
 env = environ.Env()
@@ -89,6 +91,9 @@ if env('DB_ENGINE', default='') == 'django.db.backends.mysql':
         'PASSWORD': env('DB_PASSWORD'),
         'HOST': env('DB_HOST'),
         'PORT': env('DB_PORT'),
+        'OPTIONS': {
+            'charset': 'utf8mb4',
+        },
     }
 
 # Password validation
