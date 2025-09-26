@@ -140,10 +140,14 @@ LOGOUT_REDIRECT_URL = '/accounts/login/'  # Para onde redirecionar após logout
 
 # Application definition
 DBBACKUP_STORAGE = 'django.core.files.storage.FileSystemStorage'
-DBBACKUP_FILESYSTEM_DIRECTORY = os.path.join(BASE_DIR, 'backups')
+DBBACKUP_STORAGE_OPTIONS = {'location': os.path.join(BASE_DIR, 'backups')}
+
+# Forçar a extensão .sql no nome do arquivo
+DBBACKUP_FILENAME_TEMPLATE = 'backup-{datetime}.sql'
+DBBACKUP_DATE_FORMAT = '%Y-%m-%d-%H%M%S'
 
 DBBACKUP_CONNECTION = {
     'default': {
-        'DUMP_SUFFIX': '.sqlite3',
+        'DUMP_SUFFIX': '.sql',
     }
 }
