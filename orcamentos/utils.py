@@ -994,51 +994,55 @@ def gerar_confirmacao(dados: Dict[str, Any],
         return None
 
 def gerar_arquivos(dados: Dict[str, Any], empresa: Dict[str, str] = BRAND) -> str:
-    global LOGO_PATH, COLORS, BRAND
-    # Obter o caminho REAL do arquivo de imagem
-    if hasattr(empresa, 'logo') and empresa.logo:
-        try:
-            # Para ImageField, use .path para obter o caminho absoluto
-            LOGO_PATH = empresa.logo.path
-        except (ValueError, AttributeError):
-            # Se não tiver arquivo ou der erro, mantém o padrão
+    try:
+        global LOGO_PATH, COLORS, BRAND
+                            
+        # Obter o caminho REAL do arquivo de imagem
+        if hasattr(empresa, 'logo') and empresa.logo:
+            try:
+                # Para ImageField, use .path para obter o caminho absoluto
+                LOGO_PATH = empresa.logo.path
+            except (ValueError, AttributeError):
+                # Se não tiver arquivo ou der erro, mantém o padrão
+                LOGO_PATH = os.environ.get("MUNDOKIDS_LOGO", "MUNDOKIDS_LOGO.png")
+        else:
+            # Se não tiver logo definido, usa o padrão
             LOGO_PATH = os.environ.get("MUNDOKIDS_LOGO", "MUNDOKIDS_LOGO.png")
-    else:
-        # Se não tiver logo definido, usa o padrão
-        LOGO_PATH = os.environ.get("MUNDOKIDS_LOGO", "MUNDOKIDS_LOGO.png")
-    COLORS["primary"] = getattr(empresa, "cor_principal", COLORS["primary"])
-    COLORS["secondary"] = getattr(empresa, "cor_secundaria", COLORS["secondary"])
-    COLORS["accent"] = getattr(empresa, "cor_acento", COLORS["accent"])
-    
-    BRAND["empresa"] = getattr(empresa, "nome", BRAND["empresa"])
-    BRAND["cidade"] = getattr(empresa, "cidade", BRAND["cidade"])
-    BRAND["instagram"] = getattr(empresa, "instagram", BRAND["instagram"])
-    BRAND["whatsapp"] = getattr(empresa, "whatsapp", BRAND["whatsapp"])
-    
-    
-     # Verifique os nomes exatos dos campos no seu modelo Empresa
-    #print(hasattr(empresa, 'cor_principal'))  # Deve retornar True
-    #print(hasattr(empresa, 'cor_secundaria')) # Deve retornar True  
-    #print(hasattr(empresa, 'cor_acento'))     # Deve retornar True
-    stamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
-    media_root = settings.MEDIA_ROOT
-    diretorio_pdf = os.path.join(media_root, 'orcamentos', 'gerados')
-    # Criar diretório se não existir
-    os.makedirs(diretorio_pdf, exist_ok=True)
-    SAIDAS_DIR = diretorio_pdf
-    dados = orcamento_para_dict(dados)
-    base = os.path.join(SAIDAS_DIR, f"orcamento_{dados.get('cliente', {}).get('nome', 'cliente').replace(' ', '_')}_{stamp}")
-    pdf_path = f"{base}.pdf"
-    png_path = f"{base}.png"
-    #se o status for confirmado, gerar o PDF de confirmação
-    #print("Dados para geração de arquivo:", dados)  # Linha de depuração
-    if dados.get('status') == 'confirmado':
-        #gerar_confirmacao(dados, png_path)
-        gerar_confirmacao_agendamento(dados, pdf_path)
-    else:
-        gerar_pdf(dados, pdf_path)
-        #gerar_imagem(dados, png_path)
-    return pdf_path, ""
+        COLORS["primary"] = getattr(empresa, "cor_principal", COLORS["primary"])
+        COLORS["secondary"] = getattr(empresa, "cor_secundaria", COLORS["secondary"])
+        COLORS["accent"] = getattr(empresa, "cor_acento", COLORS["accent"])
+        
+        BRAND["empresa"] = getattr(empresa, "nome", BRAND["empresa"])
+        BRAND["cidade"] = getattr(empresa, "cidade", BRAND["cidade"])
+        BRAND["instagram"] = getattr(empresa, "instagram", BRAND["instagram"])
+        BRAND["whatsapp"] = getattr(empresa, "whatsapp", BRAND["whatsapp"])
+        
+        
+        # Verifique os nomes exatos dos campos no seu modelo Empresa
+        #print(hasattr(empresa, 'cor_principal'))  # Deve retornar True
+        #print(hasattr(empresa, 'cor_secundaria')) # Deve retornar True  
+        #print(hasattr(empresa, 'cor_acento'))     # Deve retornar True
+        stamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+        media_root = settings.MEDIA_ROOT
+        diretorio_pdf = os.path.join(media_root, 'orcamentos', 'gerados')
+        # Criar diretório se não existir
+        os.makedirs(diretorio_pdf, exist_ok=True)
+        SAIDAS_DIR = diretorio_pdf
+        dados = orcamento_para_dict(dados)
+        base = os.path.join(SAIDAS_DIR, f"orcamento_{dados.get('cliente', {}).get('nome', 'cliente').replace(' ', '_')}_{stamp}")
+        pdf_path = f"{base}.pdf"
+        png_path = f"{base}.png"
+        #se o status for confirmado, gerar o PDF de confirmação
+        #print("Dados para geração de arquivo:", dados)  # Linha de depuração
+        if dados.get('status') == 'confirmado':
+            #gerar_confirmacao(dados, png_path)
+            gerar_confirmacao_agendamento(dados, pdf_path)
+        else:
+            gerar_pdf(dados, pdf_path)
+            #gerar_imagem(dados, png_path)
+        return pdf_path, ""
+    except Exception as e:
+        print("Erro ao gerar arquivos:", e)
 
 # No views.py ou utils.py
 def orcamento_para_dict(orcamento):
