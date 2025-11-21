@@ -773,6 +773,15 @@
                                         {{ agendamento.data_evento|date:"d/m/Y" }}
                                     </span>
                                 </div>
+
+                                <div class='detail-item'>
+                                    <span class="detail-label">
+                                        <i class="fas fa-clock me-1"></i>Hora do Evento
+                                    </span>
+                                    <span class="detail-value">
+                                        {{ agendamento.hora_evento|time:"H:i" }}
+                                    </span>
+                                </div>
                             </div>
 
                             <!-- Informações Financeiras -->

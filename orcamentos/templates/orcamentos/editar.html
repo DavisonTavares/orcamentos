@@ -274,7 +274,7 @@
                                 <div class="d-flex align-items-center">
                                     <input type="number" class="form-control me-2" id="descontoInput" 
                                         placeholder="0" min="0" max="100" style="width: 100px;"
-                                        value="{{ orcamento.desconto_geral }}">
+                                        value="{{ orcamento.desconto_geral|stringformat:".2f"}}">
                                     <span class="fw-medium">% de desconto</span>
                                 </div>
                                 <div class="mt-2">
@@ -316,7 +316,7 @@
                                 <h4 class="section-title">Valor Adicional</h4>
                                 <input type="number" class="form-control" id="valorAdicionalInput" 
                                     placeholder="0,00" step="0.5" min="0"
-                                    value="{{ orcamento.valor_adicional }}">
+                                    value="{{ orcamento.valor_adicional|stringformat:".2f" }}">
                                 <div class="form-text">Informe um valor adicional, se necessário (ex: deslocamento, taxa extra, etc.)</div>
                             </div>
                             <div class="col-md-6 mb-4">
@@ -348,7 +348,7 @@
                                 class="form-control" 
                                 placeholder="0,00" 
                                 id="custoOperacionalInput"
-                                value="{{ orcamento.custo_operacional|default:0 }}" step="0.01" min="0">
+                                value="{{ orcamento.custo_operacional|stringformat:".2f" }}" step="0.5" min="0">
                             <div class="form-text">Informe o custo operacional do evento (ex: combustível, alimentação, etc.)</div>
                         </div>
 
@@ -430,15 +430,21 @@
 <script>
     // Dados dos itens disponíveis
     const itensDisponiveis = {{ itens_json|safe }};
-    
     // Itens já selecionados no orçamento
     const itensSelecionadosInicial = {{ itens_selecionados|safe }};
 
-    // Estado da aplicação
+    // Estado da aplicação - CORRIGIDO
     const state = {
         itensSelecionados: [],
-        desconto: {{ orcamento.desconto_geral|default:0 }},
-        cliente: null
+        desconto: {% if orcamento.desconto_geral %}{{ orcamento.desconto_geral|stringformat:"f"|cut:"," }}{% else %}0{% endif %},
+        cliente: {% if orcamento.cliente %}{
+            id: {{ orcamento.cliente.id }},
+            nome: "{{ orcamento.cliente.nome|escapejs }}",
+            email: "{{ orcamento.cliente.email|default:''|escapejs }}",
+            telefone: "{{ orcamento.cliente.telefone|default:''|escapejs }}",
+            cpf_cnpj: "{{ orcamento.cliente.cpf_cnpj|default:''|escapejs }}"
+        }{% else %}null{% endif %},
+        orcamentoId: {{ orcamento.id }}
     };
 
     // Formatar valor em Reais
@@ -571,13 +577,17 @@
         const custoOperacionalInput = parseFloat(document.getElementById('custoOperacionalInput').value) || 0;
         const quantidadeItens = state.itensSelecionados.reduce((sum, item) => sum + item.quantidade, 0);
 
-
         // Calcular subtotal
-        const subtotal = state.itensSelecionados.reduce((total, item) => total + (item.preco * item.quantidade), 0);
+        const subtotal = state.itensSelecionados.reduce((total, item) => {
+            return total + (parseFloat(item.preco) * parseInt(item.quantidade));
+        }, 0);
 
-        // Calcular desconto
-        const valorDesconto = subtotal * (state.desconto / 100);
-        const total = subtotal - valorDesconto + (parseFloat(document.getElementById('valorAdicionalInput').value) || 0) - valorPagoInput;
+        // Calcular desconto e total
+        const valorDesconto = subtotal * (parseFloat(state.desconto) / 100);
+        const valorAdicional = parseFloat(document.getElementById('valorAdicionalInput').value) || 0;
+        
+        // Garantir que o total não seja negativo
+        const total = Math.max(0, subtotal - valorDesconto + valorAdicional - valorPagoInput);
 
         // Atualizar itens no resumo
         itensResumo.innerHTML = '';
@@ -591,16 +601,16 @@
             itensResumo.insertAdjacentHTML('beforeend', itemHTML);
         });
 
-        // Atualizar valores
-        if (quantidadeItens > 0 && custoOperacionalInput == 0) {            
+        // Atualizar custo operacional automaticamente se necessário
+        if (quantidadeItens > 0 && custoOperacionalInput === 0) {            
             document.getElementById('custoOperacionalInput').value = quantidadeItens * 50;
             mostrarToast('Custo operacional atualizado automaticamente com base na quantidade de itens.', 'info');
-        }else {
-            mostrarToast('Lembre-se de atualizar o custo operacional se necessário.', 'info');
         }
+
+        // Atualizar valores
         subtotalElement.textContent = formatarMoeda(subtotal);
         percentualDescontoElement.textContent = state.desconto;
-        valorAdicionalElement.textContent = formatarMoeda(parseFloat(document.getElementById('valorAdicionalInput').value) || 0);
+        valorAdicionalElement.textContent = formatarMoeda(valorAdicional);
         valorDescontoElement.textContent = `- ${formatarMoeda(valorDesconto)}`;
         valorPagoElement.textContent = `- ${formatarMoeda(valorPagoInput)}`;
         totalElement.textContent = formatarMoeda(total);
@@ -609,7 +619,7 @@
     // Salvar orçamento
     function salvarOrcamento() {
         // Validar dados
-        if (state?.itensSelecionados?.length === 0) {
+        if (state.itensSelecionados.length === 0) {
             mostrarToast('Selecione pelo menos um item para o orçamento', 'danger');
             return;
         }
@@ -655,6 +665,7 @@
             mostrarToast('O custo operacional não pode ser negativo', 'danger');
             return;
         }
+
         // Preparar dados para envio
         const formData = new FormData();
         formData.append('desconto', state.desconto);
@@ -673,8 +684,8 @@
             formData.append(`item_${item.id}`, item.quantidade);
         });
 
-        // Enviar via AJAX
-        fetch(`/orcamentos/${ {{ orcamento.id }} }/editar/`, {
+        // Enviar via AJAX - URL CORRIGIDA
+        fetch(`/orcamentos/{{ orcamento.id }}/editar/`, {
             method: 'POST',
             headers: {
                 'X-CSRFToken': '{{ csrf_token }}',
@@ -707,17 +718,20 @@
 
     // Event listeners
     document.addEventListener('DOMContentLoaded', function () {
-        // Inicializar itens selecionados - COM VERIFICAÇÃO
+        // Inicializar itens selecionados de forma robusta
         if (itensSelecionadosInicial && typeof itensSelecionadosInicial === 'object') {
             for (const [itemId, quantidade] of Object.entries(itensSelecionadosInicial)) {
                 try {
-                    const item = itensDisponiveis.find(i => i.id == itemId);
-                    if (item) {
+                    const itemIdNum = parseInt(itemId);
+                    const quantidadeNum = parseInt(quantidade);
+                    const item = itensDisponiveis.find(i => i.id === itemIdNum);
+                    
+                    if (item && quantidadeNum > 0) {
                         state.itensSelecionados.push({
-                            id: parseInt(itemId),
+                            id: itemIdNum,
                             nome: item.nome,
-                            preco: item.preco,
-                            quantidade: parseInt(quantidade)
+                            preco: parseFloat(item.preco),
+                            quantidade: quantidadeNum
                         });
                     }
                 } catch (error) {
@@ -752,6 +766,11 @@
             atualizarResumo();
         });
 
+        // Campo de custo operacional
+        document.getElementById('custoOperacionalInput').addEventListener('input', function () {
+            atualizarResumo();
+        });
+
         // Botão de salvar
         document.getElementById('salvarBtn').addEventListener('click', salvarOrcamento);
 
@@ -777,7 +796,6 @@
 
         // Atualizar resumo inicial
         atualizarResumo();
-        renderizarItens();
     });
 </script>
 {% endblock %}
