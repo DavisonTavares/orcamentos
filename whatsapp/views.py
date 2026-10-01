@@ -41,7 +41,13 @@ COMBOS = {
     "combo1": {"nome": "Combo A", "itens": ["1", "2"], "preco": 320.0},
 }
 
-EmpresaPadrao = Empresa.objects.first()
+def empresa_padrao():
+    """
+    Empresa usada nas mensagens recebidas pelo webhook. Consulta na hora do
+    uso (e não ao importar o módulo), para o sistema conseguir iniciar mesmo
+    antes de o banco estar migrado.
+    """
+    return Empresa.objects.first()
 
 @csrf_exempt
 @require_http_methods(["GET", "POST"])
@@ -71,7 +77,7 @@ def whatsapp_webhook(request):
                         mensagem=f"Botão clicado: {button_reply}",
                         direcao="recebida",
                         tipo="botao",
-                        empresa=EmpresaPadrao,
+                        empresa=empresa_padrao(),
                     )
                     resposta = handle_button_click(sender, button_reply)                                    
                 else:
@@ -85,7 +91,7 @@ def whatsapp_webhook(request):
                         mensagem=text,
                         direcao="recebida",
                         tipo="texto",
-                        empresa=EmpresaPadrao,
+                        empresa=empresa_padrao(),
                     )"""
                     resposta = process_message(sender, text)
 

@@ -164,8 +164,8 @@
     <nav class="navbar navbar-expand-lg bg-white shadow-sm">
         <div class="container">
             <a class="navbar-brand" href="{% url 'orcamentos:lista_orcamentos' %}">
-                {% if user.empresa.logo %}
-                <img src="{{ user.empresa.logo.url }}" alt="Logo" style="height: 40px; object-fit: contain;">
+                {% if user.empresa.logo_img_id %}
+                <img src="{% url 'accounts:logo_empresa' %}?v={{ user.empresa.logo_img_id }}" alt="Logo" style="height: 40px; object-fit: contain;">
                 {% else %}
                 <i class="fas fa-child me-2"></i> {% if user.empresa %}{{ user.empresa.nome }}{% else %}MINHA EMPRESA{% endif %}
                 {% endif %}

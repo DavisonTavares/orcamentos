@@ -5,8 +5,10 @@ from django.contrib.auth.decorators import login_required
 from django.utils.decorators import method_decorator
 from django.views.generic import CreateView, FormView
 from django.urls import reverse_lazy
+from django.http import Http404
 from .models import Empresa, Usuario
 from .forms import CadastroCompletoForm, EmpresaForm, UsuarioRegistrationForm
+from .imagens import responder_imagem
 from django.contrib.auth import update_session_auth_hash
 from django.contrib import messages
 from .forms import UsuarioRegistrationForm, EmpresaForm, CustomPasswordChangeForm
@@ -76,7 +78,16 @@ def configuracoes_empresa(request):
         'form': form,
         'empresa': empresa
     })
-    
+
+
+@login_required
+def imagem_empresa(request, campo):
+    """Logo ou assinatura da empresa do usuário, lidas do banco."""
+    imagem = getattr(request.user.empresa, f'{campo}_img', None)
+    if imagem is None:
+        raise Http404('Imagem não cadastrada')
+    return responder_imagem(imagem)
+
 
 class LoginView(AuthLoginView):
     template_name = 'accounts/login.html'

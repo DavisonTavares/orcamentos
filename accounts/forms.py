@@ -4,16 +4,21 @@ from django.core.exceptions import ValidationError
 from .models import Usuario, Empresa
 from django.contrib.auth.forms import PasswordChangeForm
 from django.core.files.images import get_image_dimensions
+from .imagens import ASSINATURA, LOGO, salvar_imagem
 
 class EmpresaForm(forms.ModelForm):
     termos = forms.BooleanField(
         required=False,
         error_messages={'required': 'Você deve aceitar os termos de uso.'}
     )
-    
+    # Logo e assinatura são guardadas no banco (ImagemArmazenada), e não
+    # como arquivo em media/ — assim funcionam também no Vercel.
+    logo = forms.ImageField(required=False, widget=forms.FileInput(attrs={'class': 'form-control', 'accept': 'image/*'}))
+    assinatura = forms.ImageField(required=False, widget=forms.FileInput(attrs={'class': 'form-control', 'accept': 'image/*'}))
+
     class Meta:
         model = Empresa
-        fields = ['nome', 'cnpj', 'telefone', 'email', 'endereco', 'logo', 'assinatura',
+        fields = ['nome', 'cnpj', 'telefone', 'email', 'endereco',
                  'cor_principal', 'cor_secundaria', 'cor_acento', 'tema_escuro', 'cidade', 'instagram', 'whatsapp']
         widgets = {
             'nome': forms.TextInput(attrs={'class': 'form-control'}),
@@ -24,8 +29,6 @@ class EmpresaForm(forms.ModelForm):
             'whatsapp': forms.TextInput(attrs={'class': 'form-control'}),
             'email': forms.EmailInput(attrs={'class': 'form-control'}),
             'endereco': forms.Textarea(attrs={'class': 'form-control', 'rows': 3}),
-            'logo': forms.FileInput(attrs={'class': 'form-control'}),
-            'assinatura': forms.FileInput(attrs={'class': 'form-control'}),
             'cor_principal': forms.TextInput(attrs={
                 'class': 'form-control', 
                 'type': 'color',
@@ -68,6 +71,16 @@ class EmpresaForm(forms.ModelForm):
             except (AttributeError, TypeError):
                 pass
         return assinatura
+
+    def save(self, commit=True):
+        empresa = super().save(commit=False)
+        if self.cleaned_data.get('logo'):
+            empresa.logo_img = salvar_imagem(self.cleaned_data['logo'], anterior=empresa.logo_img, **LOGO)
+        if self.cleaned_data.get('assinatura'):
+            empresa.assinatura_img = salvar_imagem(self.cleaned_data['assinatura'], anterior=empresa.assinatura_img, **ASSINATURA)
+        if commit:
+            empresa.save()
+        return empresa
 
 class CustomPasswordChangeForm(PasswordChangeForm):
     def __init__(self, *args, **kwargs):

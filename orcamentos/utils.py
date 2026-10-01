@@ -12,6 +12,7 @@ from django.conf import settings
 from decimal import Decimal
 from pdf2image import convert_from_path
 from .models import arredondar_total
+from accounts.imagens import caminho_temporario
 import img2pdf
 from PIL import Image, ImageDraw, ImageFont 
 import tempfile 
@@ -530,6 +531,15 @@ def gerar_catalogo(itens: List[Dict[str, Any]], empresa=None, titulo: str = "CAT
         return None
 
 
+def _caminho_imagem_empresa(empresa, campo):
+    """Caminho temporário da logo/assinatura (guardadas no banco), ou None."""
+    try:
+        return caminho_temporario(getattr(empresa, campo, None))
+    except Exception as e:
+        print(f"Erro ao preparar {campo} da empresa para o PDF:", e)
+        return None
+
+
 def _configurar_branding(empresa) -> None:
     """
     Atualiza os dicionários globais LOGO_PATH/COLORS/BRAND com os dados da
@@ -540,17 +550,12 @@ def _configurar_branding(empresa) -> None:
     global LOGO_PATH, ASSINATURA_PATH, COLORS, BRAND
     if empresa is None:
         return
-    if hasattr(empresa, 'logo') and empresa.logo:
-        try:
-            LOGO_PATH = empresa.logo.path
-        except (ValueError, AttributeError):
-            pass
-    ASSINATURA_PATH = None
-    if hasattr(empresa, 'assinatura') and empresa.assinatura:
-        try:
-            ASSINATURA_PATH = empresa.assinatura.path
-        except (ValueError, AttributeError):
-            pass
+    # Logo/assinatura ficam no banco; o PDF precisa de um arquivo, então
+    # são gravadas numa pasta temporária (permitida também no Vercel)
+    logo = _caminho_imagem_empresa(empresa, 'logo_img')
+    if logo:
+        LOGO_PATH = logo
+    ASSINATURA_PATH = _caminho_imagem_empresa(empresa, 'assinatura_img')
     COLORS["primary"] = getattr(empresa, "cor_principal", None) or COLORS["primary"]
     COLORS["secondary"] = getattr(empresa, "cor_secundaria", None) or COLORS["secondary"]
     COLORS["accent"] = getattr(empresa, "cor_acento", None) or COLORS["accent"]
@@ -1871,17 +1876,10 @@ def gerar_arquivos(dados: Dict[str, Any], empresa: Dict[str, str] = BRAND, inclu
         if recibo_orcamento is not None:
             _configurar_branding(empresa)  # carrega a assinatura usada no recibo
                             
-        # Obter o caminho REAL do arquivo de imagem
-        if hasattr(empresa, 'logo') and empresa.logo:
-            try:
-                # Para ImageField, use .path para obter o caminho absoluto
-                LOGO_PATH = empresa.logo.path
-            except (ValueError, AttributeError):
-                # Se não tiver arquivo ou der erro, mantém o padrão
-                LOGO_PATH = os.environ.get("MUNDOKIDS_LOGO", "MUNDOKIDS_LOGO.png")
-        else:
-            # Se não tiver logo definido, usa o padrão
-            LOGO_PATH = os.environ.get("MUNDOKIDS_LOGO", "MUNDOKIDS_LOGO.png")
+        # Logo guardada no banco (gravada num arquivo temporário para o PDF);
+        # sem logo cadastrada, usa a padrão
+        LOGO_PATH = (_caminho_imagem_empresa(empresa, 'logo_img')
+                     or os.environ.get("MUNDOKIDS_LOGO", "MUNDOKIDS_LOGO.png"))
         COLORS["primary"] = getattr(empresa, "cor_principal", COLORS["primary"])
         COLORS["secondary"] = getattr(empresa, "cor_secundaria", COLORS["secondary"])
         COLORS["accent"] = getattr(empresa, "cor_acento", COLORS["accent"])

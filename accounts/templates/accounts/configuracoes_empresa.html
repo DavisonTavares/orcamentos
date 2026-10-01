@@ -185,9 +185,9 @@
                             <div class="mb-3">
                                 <label class="form-label">Logo da Empresa</label>
                                 {{ form.logo }}
-                                {% if empresa.logo %}
+                                {% if empresa.logo_img_id %}
                                 <div class="mt-2">
-                                    <img src="{{ empresa.logo.url }}" alt="Logo" class="logo-preview">
+                                    <img src="{% url 'accounts:logo_empresa' %}?v={{ empresa.logo_img_id }}" alt="Logo" class="logo-preview">
                                 </div>
                                 {% endif %}
                             </div>
@@ -196,9 +196,9 @@
                                 <label class="form-label">Assinatura</label>
                                 {{ form.assinatura }}
                                 <div class="form-text">Foto ou scan da assinatura, usada automaticamente nos recibos em PDF.</div>
-                                {% if empresa.assinatura %}
+                                {% if empresa.assinatura_img_id %}
                                 <div class="mt-2">
-                                    <img src="{{ empresa.assinatura.url }}" alt="Assinatura" class="logo-preview">
+                                    <img src="{% url 'accounts:assinatura_empresa' %}?v={{ empresa.assinatura_img_id }}" alt="Assinatura" class="logo-preview">
                                 </div>
                                 {% endif %}
                             </div>

@@ -15,4 +15,6 @@ urlpatterns = [
     path('perfil/', views.perfil_usuario, name='perfil'),
     path('perfil/alterar-senha/', views.alterar_senha, name='alterar_senha'),
     path('configuracoes/empresa/', views.configuracoes_empresa, name='configuracoes_empresa'),
+    path('empresa/logo/', views.imagem_empresa, {'campo': 'logo'}, name='logo_empresa'),
+    path('empresa/assinatura/', views.imagem_empresa, {'campo': 'assinatura'}, name='assinatura_empresa'),
 ]

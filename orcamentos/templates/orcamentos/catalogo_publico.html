@@ -50,8 +50,8 @@
 </head>
 <body>
     <header class="topo">
-        {% if tem_logo %}
-        <img src="{% url 'catalogo:logo' token %}" alt="{{ empresa.nome }}">
+        {% if logo_id %}
+        <img src="{% url 'catalogo:logo' token %}?v={{ logo_id }}" alt="{{ empresa.nome }}">
         {% endif %}
         <h1>Catálogo {{ empresa.nome }}</h1>
         <p>Diversão garantida para a sua festa 🎉</p>
@@ -65,8 +65,8 @@
                 {% for item in itens %}
                 <article class="card-item">
                     <div class="foto">
-                        {% if item.tem_foto %}
-                        <img src="{% url 'catalogo:foto' token item.id %}" alt="{{ item.nome }}" loading="lazy">
+                        {% if item.foto_id %}
+                        <img src="{% url 'catalogo:foto' token item.id %}?v={{ item.foto_id }}" alt="{{ item.nome }}" loading="lazy">
                         {% else %}
                         <i class="fas fa-gift" aria-hidden="true"></i>
                         {% endif %}

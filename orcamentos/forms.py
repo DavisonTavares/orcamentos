@@ -1,4 +1,5 @@
 from django import forms
+from accounts.imagens import FOTO_ITEM, salvar_imagem
 from .models import Cliente, Item, Orcamento, OrcamentoItem
 
 class ClienteForm(forms.ModelForm):
@@ -34,10 +35,23 @@ class ClienteForm(forms.ModelForm):
         return instance
 
 class ItemForm(forms.ModelForm):
+    # Foto do catálogo: guardada no banco (ImagemArmazenada) pelo método salvar_foto
+    foto = forms.ImageField(required=False)
+    remover_foto = forms.BooleanField(required=False)
+
+    def salvar_foto(self, item):
+        """Aplica a foto enviada (ou a remoção) ao item já salvo."""
+        if self.cleaned_data.get('foto'):
+            item.foto = salvar_imagem(self.cleaned_data['foto'], anterior=item.foto, **FOTO_ITEM)
+            item.save(update_fields=['foto'])
+        elif self.cleaned_data.get('remover_foto') and item.foto_id:
+            item.foto.delete()  # o item fica sem foto (on_delete=SET_NULL)
+            item.foto = None
+
     class Meta:
         model = Item
         fields = ['nome', 'descricao', 'valor_unitario', 'desconto', 'categoria', 'disponivel', 'investimento', 'custo_fixo', 'percentual_lucro',
-                  'imagem', 'exibir_catalogo']
+                  'exibir_catalogo']
         widgets = {
             'nome': forms.TextInput(attrs={
                 'class': 'form-control',

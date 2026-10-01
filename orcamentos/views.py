@@ -15,7 +15,6 @@ from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
 from django.utils.http import url_has_allowed_host_and_scheme
 import os
 import json
-import mimetypes
 import unicodedata
 
 from .models import (
@@ -24,6 +23,7 @@ from .models import (
 )
 from accounts.models import Empresa, Usuario
 from .forms import OrcamentoForm, ClienteForm, ItemForm, OrcamentoSearchForm
+from accounts.imagens import responder_imagem
 from .utils import gerar_arquivos, gerar_catalogo, gerar_checklist_conferencia, gerar_recibo, gerar_resumo_festas
 from whatsapp.views import (
     AVISO_NOTA_FISCAL, INTERVALO_ENVIO_EVENTOS, enviar_em_segundo_plano, eventos_em_aberto,
@@ -1150,6 +1150,7 @@ def novo_item(request):
             item.empresa = request.user.empresa  # Associa à empresa do usuário
             item.save()
             salvar_checklist_item(request, item)
+            form.salvar_foto(item)
             messages.success(request, 'Item cadastrado com sucesso!')
             return redirect("orcamentos:lista_itens")
     else:
@@ -1166,6 +1167,7 @@ def editar_item(request, item_id):
         if form.is_valid():
             form.save()
             salvar_checklist_item(request, item)
+            form.salvar_foto(item)
             messages.success(request, 'Item atualizado com sucesso!')
             return redirect("orcamentos:lista_itens")
     else:
@@ -1682,7 +1684,7 @@ def links_catalogo(request):
         })
     return render(request, 'orcamentos/catalogo_links.html', {
         'linhas': linhas,
-        'itens_sem_foto': _itens_catalogo(empresa).filter(Q(imagem='') | Q(imagem__isnull=True)).count(),
+        'itens_sem_foto': _itens_catalogo(empresa).filter(foto__isnull=True).count(),
     })
 
 
@@ -1716,7 +1718,7 @@ def catalogo_publico(request, token):
             'id': item.id,
             'nome': nome,
             'descricao': item.descricao if item.nome and item.descricao != item.nome else '',
-            'tem_foto': bool(item.imagem),
+            'foto_id': item.foto_id,
             'valor': valor,
             'valor_pix': valor_pix,
         })
@@ -1728,42 +1730,33 @@ def catalogo_publico(request, token):
     return render(request, 'orcamentos/catalogo_publico.html', {
         'empresa': empresa,
         'token': token,
-        'tem_logo': bool(empresa.logo),
+        'logo_id': empresa.logo_img_id,
         'secoes': [(titulo, secoes[chave]) for chave, titulo in SECOES_CATALOGO if secoes.get(chave)],
         'whatsapp': whatsapp,
         'cor': empresa.cor_principal or '#2463EB',
     })
 
 
-def _servir_imagem(arquivo):
-    try:
-        resposta = FileResponse(arquivo.open('rb'), content_type=mimetypes.guess_type(arquivo.name)[0] or 'image/jpeg')
-    except (FileNotFoundError, ValueError):
-        raise Http404('Imagem não encontrada')
-    resposta['Cache-Control'] = 'public, max-age=86400'
-    return resposta
+def _servir_foto(imagem):
+    if imagem is None:
+        raise Http404('Imagem não cadastrada')
+    return responder_imagem(imagem)
 
 
 def catalogo_foto(request, token, item_id):
     """Foto de um item do catálogo — só para itens visíveis em um link ativo."""
     link = _link_ativo_ou_404(token)
-    item = get_object_or_404(_itens_catalogo(link.empresa), id=item_id)
-    if not item.imagem:
-        raise Http404('Item sem foto')
-    return _servir_imagem(item.imagem)
+    item = get_object_or_404(_itens_catalogo(link.empresa).select_related('foto'), id=item_id)
+    return _servir_foto(item.foto)
 
 
 def catalogo_logo(request, token):
     link = _link_ativo_ou_404(token)
-    if not link.empresa.logo:
-        raise Http404('Empresa sem logo')
-    return _servir_imagem(link.empresa.logo)
+    return _servir_foto(link.empresa.logo_img)
 
 
 @login_required
 def foto_item(request, item_id):
-    """Foto do item para as telas internas (não depende da pasta media pública)."""
-    item = get_object_or_404(Item.objects.filter(empresa=request.user.empresa), id=item_id)
-    if not item.imagem:
-        raise Http404('Item sem foto')
-    return _servir_imagem(item.imagem)
+    """Foto do item para as telas internas."""
+    item = get_object_or_404(Item.objects.filter(empresa=request.user.empresa).select_related('foto'), id=item_id)
+    return _servir_foto(item.foto)

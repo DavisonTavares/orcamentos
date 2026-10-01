@@ -2,6 +2,31 @@ from django.db import models
 from django.contrib.auth.models import AbstractUser
 from django.utils.translation import gettext_lazy as _
 
+
+class ImagemArmazenada(models.Model):
+    """
+    Imagem guardada no próprio banco (logo, assinatura, fotos dos itens do
+    catálogo). Em hospedagens como o Vercel o disco é temporário e somente
+    leitura, então arquivos enviados não ficam salvos — no banco, a imagem
+    funciona em qualquer servidor e entra no backup. Fica numa tabela
+    separada para não ser carregada junto com a empresa/item em toda página.
+    """
+    dados = models.BinaryField()
+    tipo = models.CharField(max_length=50, default='image/jpeg')  # content type, ex.: image/png
+    criado_em = models.DateTimeField(auto_now_add=True)
+
+    @property
+    def extensao(self):
+        return {'image/png': 'png', 'image/webp': 'webp'}.get(self.tipo, 'jpg')
+
+    def __str__(self):
+        return f"Imagem #{self.pk} ({self.tipo}, {len(self.dados or b'') // 1024} KB)"
+
+    class Meta:
+        verbose_name = 'Imagem armazenada'
+        verbose_name_plural = 'Imagens armazenadas'
+
+
 class Empresa(models.Model):
     nome = models.CharField(_('Nome da Empresa'), max_length=100)
     cnpj = models.CharField(_('CNPJ'), max_length=18, unique=True, blank=True, null=True)
@@ -13,8 +38,14 @@ class Empresa(models.Model):
     endereco = models.TextField(_('Endereço'), blank=True, null=True)
     data_criacao = models.DateTimeField(_('Data de Criação'), auto_now_add=True)
     ativa = models.BooleanField(_('Ativa'), default=True)
-    logo = models.ImageField(upload_to='empresas/logos/', blank=True, null=True, verbose_name='Logo')
-    assinatura = models.ImageField(upload_to='empresas/assinaturas/', blank=True, null=True, verbose_name='Assinatura')
+    # Legado: arquivos em media/ (não funcionam no Vercel). Mantidos só como
+    # histórico; o sistema usa logo_img/assinatura_img, guardadas no banco.
+    logo = models.ImageField(upload_to='empresas/logos/', blank=True, null=True, verbose_name='Logo (arquivo antigo)')
+    assinatura = models.ImageField(upload_to='empresas/assinaturas/', blank=True, null=True, verbose_name='Assinatura (arquivo antigo)')
+    logo_img = models.ForeignKey(ImagemArmazenada, on_delete=models.SET_NULL, null=True, blank=True,
+                                 related_name='+', verbose_name='Logo')
+    assinatura_img = models.ForeignKey(ImagemArmazenada, on_delete=models.SET_NULL, null=True, blank=True,
+                                       related_name='+', verbose_name='Assinatura')
     cor_principal = models.CharField(max_length=7, default='#2463EB', verbose_name='Cor Principal')
     cor_secundaria = models.CharField(max_length=7, default='#4ECDC4', verbose_name='Cor Secundária')
     cor_acento = models.CharField(max_length=7, default='#FF6B6B', verbose_name='Cor de Acento')

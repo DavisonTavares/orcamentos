@@ -2,7 +2,7 @@ import secrets
 from decimal import Decimal, ROUND_HALF_UP
 from django.db import models
 from django.utils import timezone
-from accounts.models import Empresa, Usuario
+from accounts.models import Empresa, ImagemArmazenada, Usuario
 
 
 def arredondar_total(valor):
@@ -81,7 +81,8 @@ class Item(models.Model):
     categoria = models.CharField(max_length=20, choices=CATEGORIA_CHOICES, default='brinquedo')
     disponivel = models.BooleanField(default=True)
     nome = models.CharField(max_length=100, blank=True, null=True)
-    imagem = models.ImageField(upload_to='itens/fotos/', blank=True, null=True)  # foto usada no catálogo online
+    # Foto do catálogo online, guardada no banco (funciona também no Vercel)
+    foto = models.ForeignKey(ImagemArmazenada, on_delete=models.SET_NULL, null=True, blank=True, related_name='+')
     exibir_catalogo = models.BooleanField(default=True)  # aparece no catálogo online enviado aos clientes
 
     def __str__(self):
