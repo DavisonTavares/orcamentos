@@ -20,7 +20,7 @@ import unicodedata
 
 from .models import (
     Cliente, Item, Orcamento, OrcamentoItem, ChecklistItem, LinkCatalogo, TIPOS_EVENTO, KIT_INFLAVEL,
-    PreOrcamento, PreOrcamentoItem, VALIDADE_PRE_ORCAMENTO_DIAS,
+    PreOrcamento, PreOrcamentoItem, VALIDADE_PRE_ORCAMENTO_DIAS, MARGEM_CONFLITO,
     arredondar_total, calcular_total,
 )
 from accounts.models import Empresa, Usuario
@@ -205,11 +205,15 @@ def detalhes_orcamento(request, orcamento_id):
         subtotal += total_item
     
     desconto_geral = subtotal * (orcamento.desconto_geral / 100) if orcamento.desconto_geral else 0
-    total = subtotal - desconto_geral + (orcamento.valor_adicional or 0)
-    total = float(f"{total:.2f}")
+    total_exato = subtotal - desconto_geral + (orcamento.valor_adicional or 0)
+    # Mesmo total do resto do sistema (arredondado em reais inteiros); a
+    # diferença de centavos vai para o desconto geral, como no PDF
+    total = float(orcamento.total)
+    if desconto_geral:
+        desconto_geral -= Decimal(str(total)) - total_exato
     desconto_geral = float(f"{desconto_geral:.2f}")
     saldo_devedor = total - float(f"{orcamento.valor_pago:.2f}")
-    
+
     context = {
         'orcamento': orcamento,
         'itens_com_totais': itens_com_totais,
@@ -218,6 +222,8 @@ def detalhes_orcamento(request, orcamento_id):
         'valor_desconto': desconto_geral,
         'saldo_devedor': float(f"{saldo_devedor:.2f}"),
         'total': total,
+        # Aviso antecipado de outro evento confirmado no mesmo horário (com folga de 1h)
+        'conflitos': orcamento.conflitos_de_horario() if orcamento.status in ('pendente', 'reagendar', 'confirmado') else [],
     }
     
     return render(request, "orcamentos/detalhes_orcamento.html", context)
@@ -892,6 +898,23 @@ def alterar_status(request, orcamento_id):
             if request.headers.get('X-Requested-With') == 'XMLHttpRequest':
                 return JsonResponse({'success': False, 'error': 'Status inválido'}, status=400)
             return redirect("orcamentos:detalhes_orcamento", orcamento_id=orcamento_id)
+
+        # Ao confirmar: se outro evento confirmado bate com o horário (com 1h de
+        # folga antes/depois), mostra o alerta antes de mudar qualquer coisa
+        if novo_status == 'confirmado' and request.POST.get('ignorar_conflito') != '1':
+            conflitos = orcamento.conflitos_de_horario()
+            if conflitos:
+                if request.headers.get('X-Requested-With') == 'XMLHttpRequest':
+                    return JsonResponse({'success': False, 'conflito': True,
+                                         'conflitos': [c['orcamento'].id for c in conflitos]}, status=409)
+                return render(request, 'orcamentos/confirmar_conflito_horario.html', {
+                    'orcamento': orcamento,
+                    'conflitos': conflitos,
+                    'intervalo': orcamento.intervalo(),
+                    'margem_horas': int(MARGEM_CONFLITO.total_seconds() // 3600),
+                    'next': request.POST.get('next', ''),
+                })
+
         #apaga o pdf e png se o status for alterado para pendente
         if orcamento.pdf and os.path.exists(orcamento.pdf.path):
             os.remove(orcamento.pdf.path)

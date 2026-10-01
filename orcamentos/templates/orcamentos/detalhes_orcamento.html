@@ -179,6 +179,25 @@
         </div>
     </div>
 
+    {% if conflitos %}
+    <div class="alert alert-warning d-flex gap-3 align-items-start">
+        <i class="fas fa-exclamation-triangle fs-4 mt-1"></i>
+        <div>
+            <strong>Outra locação confirmada nesse horário</strong>
+            <span class="small">(considerando 1h antes e 1h depois para montagem e desmontagem):</span>
+            <ul class="mb-0 mt-1 small">
+                {% for c in conflitos %}
+                <li>
+                    <a href="{% url 'orcamentos:detalhes_orcamento' c.orcamento.id %}" class="alert-link">#{{ c.orcamento.id }} · {{ c.orcamento.cliente.nome }}</a>
+                    — {{ c.inicio|time:"H:i" }} às {{ c.fim|time:"H:i" }}{% if c.sobrepoe %} <span class="badge bg-danger">horários se cruzam</span>{% endif %}
+                    {% if c.itens_em_comum %}<span class="text-danger">· mesmo brinquedo: {{ c.itens_em_comum|join:", " }}</span>{% endif %}
+                </li>
+                {% endfor %}
+            </ul>
+        </div>
+    </div>
+    {% endif %}
+
     <div class="row">
         <!-- Coluna Principal -->
         <div class="col-lg-8">

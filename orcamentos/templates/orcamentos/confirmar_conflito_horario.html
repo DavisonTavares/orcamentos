@@ -1,0 +1,75 @@
+{% extends "base.html" %}
+
+{% block title %}Conflito de horário - Mundo Kids{% endblock %}
+
+{% block content %}
+<div class="container py-4" style="max-width: 760px;">
+    <div class="card shadow-sm border-0">
+        <div class="card-body p-4">
+            <div class="d-flex align-items-start gap-3 mb-3">
+                <div class="rounded-circle bg-warning bg-opacity-25 text-warning d-flex align-items-center justify-content-center flex-shrink-0"
+                     style="width: 52px; height: 52px; font-size: 1.4rem;">
+                    <i class="fas fa-exclamation-triangle"></i>
+                </div>
+                <div>
+                    <h1 class="h4 mb-1">Atenção: já existe locação nesse horário</h1>
+                    <p class="text-muted mb-0">
+                        O orçamento <strong>#{{ orcamento.id }}</strong> ({{ orcamento.cliente.nome }}) é para
+                        <strong>{{ intervalo.0|date:"d/m/Y" }}, das {{ intervalo.0|time:"H:i" }} às {{ intervalo.1|time:"H:i" }}</strong>.
+                        Considerando {{ margem_horas }}h antes e {{ margem_horas }}h depois para montagem e desmontagem,
+                        ele bate com:
+                    </p>
+                </div>
+            </div>
+
+            <div class="list-group mb-3">
+                {% for c in conflitos %}
+                <a href="{% url 'orcamentos:detalhes_orcamento' c.orcamento.id %}" target="_blank" rel="noopener"
+                   class="list-group-item list-group-item-action">
+                    <div class="d-flex flex-wrap justify-content-between gap-2">
+                        <div>
+                            <strong>#{{ c.orcamento.id }} · {{ c.orcamento.cliente.nome }}</strong>
+                            <div class="small text-muted">{{ c.orcamento.tipo_evento }} · {{ c.orcamento.endereco|truncatechars:60 }}</div>
+                        </div>
+                        <div class="text-end">
+                            <div class="fw-semibold">
+                                {% if c.inicio.date != intervalo.0.date %}{{ c.inicio|date:"d/m" }} {% endif %}{{ c.inicio|time:"H:i" }} às {{ c.fim|time:"H:i" }}
+                            </div>
+                            {% if c.sobrepoe %}
+                            <span class="badge bg-danger">Horários se cruzam</span>
+                            {% else %}
+                            <span class="badge bg-warning text-dark">Menos de {{ margem_horas }}h de intervalo</span>
+                            {% endif %}
+                        </div>
+                    </div>
+                    {% if c.itens_em_comum %}
+                    <div class="small text-danger mt-1">
+                        <i class="fas fa-cube me-1"></i><strong>Mesmo brinquedo:</strong> {{ c.itens_em_comum|join:", " }}
+                    </div>
+                    {% endif %}
+                </a>
+                {% endfor %}
+            </div>
+
+            <p class="small text-muted">
+                Verifique se há equipe e brinquedos suficientes para os dois eventos antes de confirmar.
+            </p>
+
+            <div class="d-flex flex-wrap gap-2">
+                <form method="post" action="{% url 'orcamentos:alterar_status' orcamento.id %}">
+                    {% csrf_token %}
+                    <input type="hidden" name="status" value="confirmado">
+                    <input type="hidden" name="ignorar_conflito" value="1">
+                    {% if next %}<input type="hidden" name="next" value="{{ next }}">{% endif %}
+                    <button type="submit" class="btn btn-warning">
+                        <i class="fas fa-check me-1"></i>Confirmar mesmo assim
+                    </button>
+                </form>
+                <a href="{% url 'orcamentos:detalhes_orcamento' orcamento.id %}" class="btn btn-outline-secondary">
+                    Voltar sem confirmar
+                </a>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

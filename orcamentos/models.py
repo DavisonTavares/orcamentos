@@ -1,9 +1,15 @@
 import secrets
 import unicodedata
+from datetime import datetime, timedelta
 from decimal import Decimal, ROUND_HALF_UP
 from django.db import models
 from django.utils import timezone
 from accounts.models import Empresa, ImagemArmazenada, Usuario
+
+
+# Folga exigida entre um evento e outro (montagem/desmontagem): ao confirmar,
+# avisa se outro evento confirmado começa ou termina a menos disso
+MARGEM_CONFLITO = timedelta(hours=1)
 
 
 def arredondar_total(valor):
@@ -238,6 +244,57 @@ class Orcamento(models.Model):
             return (self.data_evento - hoje).days
         return None
     
+    def intervalo(self):
+        """(início, fim) do evento como datetime, ou None se faltar data/hora."""
+        if not self.data_evento or not self.hora_evento:
+            return None
+        hora = self.hora_evento
+        if isinstance(hora, str):
+            try:
+                hora = datetime.strptime(hora[:5], '%H:%M').time()
+            except ValueError:
+                return None
+        try:
+            horas = int(self.periodo_evento)
+        except (TypeError, ValueError):
+            horas = 3
+        inicio = datetime.combine(self.data_evento, hora)
+        return inicio, inicio + timedelta(hours=horas)
+
+    def conflitos_de_horario(self):
+        """
+        Eventos confirmados que batem com o horário deste, considerando
+        MARGEM_CONFLITO antes e depois (montagem/desmontagem). Retorna uma
+        lista de dicts com o orçamento, o horário e os itens em comum.
+        """
+        meu = self.intervalo()
+        if meu is None:
+            return []
+        inicio, fim = meu
+        meus_itens = {oi.item_id: oi.item.nome or oi.item.descricao for oi in self.itens.select_related('item')}
+        candidatos = (
+            Orcamento.objects
+            .filter(empresa_id=self.empresa_id, status='confirmado',
+                    data_evento__range=[self.data_evento - timedelta(days=1), self.data_evento + timedelta(days=1)])
+            .exclude(pk=self.pk)
+            .select_related('cliente')
+            .prefetch_related('itens')
+        )
+        conflitos = []
+        for outro in candidatos:
+            dele = outro.intervalo()
+            if dele is None:
+                continue
+            if dele[0] < fim + MARGEM_CONFLITO and dele[1] > inicio - MARGEM_CONFLITO:
+                conflitos.append({
+                    'orcamento': outro,
+                    'inicio': dele[0],
+                    'fim': dele[1],
+                    'sobrepoe': dele[0] < fim and dele[1] > inicio,  # horários se cruzam (não só a margem)
+                    'itens_em_comum': [meus_itens[oi.item_id] for oi in outro.itens.all() if oi.item_id in meus_itens],
+                })
+        return sorted(conflitos, key=lambda c: c['inicio'])
+
     @property
     def data_conclusao(self):
         """Data de conclusão do agendamento"""
