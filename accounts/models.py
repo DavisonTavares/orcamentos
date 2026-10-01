@@ -14,6 +14,7 @@ class Empresa(models.Model):
     data_criacao = models.DateTimeField(_('Data de Criação'), auto_now_add=True)
     ativa = models.BooleanField(_('Ativa'), default=True)
     logo = models.ImageField(upload_to='empresas/logos/', blank=True, null=True, verbose_name='Logo')
+    assinatura = models.ImageField(upload_to='empresas/assinaturas/', blank=True, null=True, verbose_name='Assinatura')
     cor_principal = models.CharField(max_length=7, default='#2463EB', verbose_name='Cor Principal')
     cor_secundaria = models.CharField(max_length=7, default='#4ECDC4', verbose_name='Cor Secundária')
     cor_acento = models.CharField(max_length=7, default='#FF6B6B', verbose_name='Cor de Acento')

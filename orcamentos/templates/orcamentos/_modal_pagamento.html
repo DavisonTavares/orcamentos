@@ -1,0 +1,101 @@
+{% comment %}
+Modal "Registrar pagamento", compartilhado entre as telas. Para abrir, use um botão assim:
+
+<button type="button" class="btn ..." data-bs-toggle="modal" data-bs-target="#modalPagamento"
+        data-url="{% url 'orcamentos:registrar_pagamento' orcamento.id %}"
+        data-orcamento="{{ orcamento.id }}" data-cliente="{{ orcamento.cliente.nome }}"
+        data-total="{{ orcamento.total|stringformat:'.2f' }}" data-pago="{{ orcamento.valor_pago|stringformat:'.2f' }}">
+{% endcomment %}
+<div class="modal fade" id="modalPagamento" tabindex="-1" aria-labelledby="modalPagamentoTitulo" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+        <form method="post" action="" class="modal-content" id="formPagamento">
+            {% csrf_token %}
+            <input type="hidden" name="next" value="{{ request.get_full_path }}">
+            <div class="modal-header">
+                <h5 class="modal-title" id="modalPagamentoTitulo">
+                    <i class="fas fa-hand-holding-usd me-2 text-success"></i>Registrar pagamento
+                </h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Fechar"></button>
+            </div>
+            <div class="modal-body">
+                <p class="mb-3">
+                    Orçamento <strong>#<span data-campo="orcamento"></span></strong> ·
+                    <span data-campo="cliente"></span>
+                </p>
+                <div class="row g-2 mb-3 small text-center">
+                    <div class="col-4">
+                        <div class="text-muted">Total</div>
+                        <div class="fw-bold" data-campo="total"></div>
+                    </div>
+                    <div class="col-4">
+                        <div class="text-muted">Já pago</div>
+                        <div class="fw-bold text-success" data-campo="pago"></div>
+                    </div>
+                    <div class="col-4">
+                        <div class="text-muted">Saldo</div>
+                        <div class="fw-bold text-danger" data-campo="saldo"></div>
+                    </div>
+                </div>
+
+                <label for="valorPagamento" class="form-label">Valor recebido agora (R$)</label>
+                <div class="input-group mb-2">
+                    <span class="input-group-text">R$</span>
+                    <input type="number" step="0.01" min="0.01" class="form-control" id="valorPagamento" name="valor" required>
+                    <button type="button" class="btn btn-outline-secondary" id="btnQuitarSaldo" title="Preencher com o saldo restante">
+                        Quitar saldo
+                    </button>
+                </div>
+                <div class="form-text mb-3">O valor é somado ao que já foi pago.</div>
+
+                <div class="form-check">
+                    <input class="form-check-input" type="checkbox" name="enviar_recibo" value="1" id="enviarRecibo" checked>
+                    <label class="form-check-label" for="enviarRecibo">
+                        Enviar recibo ao cliente pelo WhatsApp (com aviso de nota fiscal)
+                    </label>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancelar</button>
+                <button type="submit" class="btn btn-success">
+                    <i class="fas fa-check me-1"></i>Registrar
+                </button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<script>
+(function () {
+    const modal = document.getElementById('modalPagamento');
+    if (!modal) return;
+    const form = document.getElementById('formPagamento');
+    const valor = document.getElementById('valorPagamento');
+    const reais = (n) => n.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+    let saldo = 0;
+
+    modal.addEventListener('show.bs.modal', function (event) {
+        const btn = event.relatedTarget;
+        const total = parseFloat(btn.dataset.total) || 0;
+        const pago = parseFloat(btn.dataset.pago) || 0;
+        saldo = Math.max(total - pago, 0);
+
+        form.action = btn.dataset.url;
+        modal.querySelector('[data-campo="orcamento"]').textContent = btn.dataset.orcamento;
+        modal.querySelector('[data-campo="cliente"]').textContent = btn.dataset.cliente;
+        modal.querySelector('[data-campo="total"]').textContent = reais(total);
+        modal.querySelector('[data-campo="pago"]').textContent = reais(pago);
+        modal.querySelector('[data-campo="saldo"]').textContent = reais(saldo);
+        valor.value = '';
+    });
+    modal.addEventListener('shown.bs.modal', () => valor.focus());
+
+    document.getElementById('btnQuitarSaldo').addEventListener('click', function () {
+        if (saldo > 0) valor.value = saldo.toFixed(2);
+    });
+
+    // Evita registrar o mesmo pagamento duas vezes com clique duplo
+    form.addEventListener('submit', function () {
+        form.querySelector('button[type="submit"]').disabled = true;
+    });
+})();
+</script>

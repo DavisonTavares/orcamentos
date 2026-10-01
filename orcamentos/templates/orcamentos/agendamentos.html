@@ -461,17 +461,39 @@
     <div class="row">
         <div class="col-12">
             <!-- Header Moderno -->
-            <div class="d-flex justify-content-between align-items-center mb-4">
+            <div class="d-flex flex-wrap justify-content-between align-items-center gap-3 mb-4">
                 <div>
                     <h1 class="h2 mb-1">
                         <i class="fas fa-calendar-alt me-2"></i>Agendamentos
                     </h1>
                     <p class="text-muted mb-0">Gerencie todos os eventos e compromissos</p>
                 </div>
-                <div class="btn-group">
+                <div class="d-flex flex-wrap gap-2">
                     <a href="{% url 'orcamentos:novo_orcamento' %}" class="btn btn-primary">
                         <i class="fas fa-plus me-2"></i>Novo Agendamento
                     </a>
+                    <a href="{% url 'orcamentos:resumo_festas' %}" class="btn btn-outline-danger">
+                        <i class="fas fa-file-pdf me-2"></i>Resumo de Festas
+                    </a>
+                    {% if envio_em_andamento %}
+                    <form method="post" action="{% url 'cancelar_envio_eventos' %}" class="d-inline"
+                          onsubmit="return confirm('Cancelar os envios que ainda não saíram?\n\nAs mensagens já enviadas não são desfeitas.')">
+                        {% csrf_token %}
+                        <button type="submit" class="btn btn-danger" {% if envio_em_andamento.cancelando %}disabled{% endif %}>
+                            <i class="fas fa-stop-circle me-2"></i>
+                            {% if envio_em_andamento.cancelando %}Cancelando...{% else %}Cancelar Envios{% endif %}
+                            ({{ envio_em_andamento.enviados }}/{{ envio_em_andamento.total }} enviados)
+                        </button>
+                    </form>
+                    {% elif eventos_em_aberto_count %}
+                    <form method="post" action="{% url 'enviar_atualizacao_eventos' %}" class="d-inline"
+                          onsubmit="return confirm('Enviar o orçamento e a mensagem de \'já estamos preparando tudo\' para {{ eventos_em_aberto_count }} evento(s) em aberto?\n\nQuem já pagou algum valor recebe o recibo no mesmo PDF e o aviso de nota fiscal.\n\nOs envios saem um a cada {{ intervalo_envio_eventos }} segundos, em segundo plano.')">
+                        {% csrf_token %}
+                        <button type="submit" class="btn btn-success">
+                            <i class="fab fa-whatsapp me-2"></i>Enviar Atualização ({{ eventos_em_aberto_count }})
+                        </button>
+                    </form>
+                    {% endif %}
                     <a href="{% url 'orcamentos:lista_orcamentos' %}" class="btn btn-outline-secondary">
                         <i class="fas fa-arrow-left me-2"></i>Voltar
                     </a>
@@ -509,8 +531,9 @@
                 
                 <!-- Dias do calendário -->
                 {% for dia in dias_calendario %}
-                <div class="calendar-day 
-                    {% if dia.hoje %}current{% endif %} 
+                <div class="calendar-day
+                    {% if dia.hoje %}current{% endif %}
+                    {% if dia.selecionado %}selected{% endif %}
                     {% if dia.eventos %}has-events{% endif %}
                     {% if not dia.mes_atual %}text-muted{% endif %}"
                     {% if dia.mes_atual %}data-date="{{ dia.data }}"{% endif %}>
@@ -547,7 +570,7 @@
                 <div class="filtros-grid">
                     <div class="filter-group">
                         <label class="filter-label">Data</label>
-                        <input type="date" class="form-control" name="data" 
+                        <input type="date" class="form-control" name="data" value="{{ data_filter }}"
                             onchange="location = '?data=' + this.value;" >
                     </div>
 
@@ -611,15 +634,36 @@
                                 <a href="{% url 'orcamentos:editar_orcamento' agendamento.id %}" class="btn btn-action btn-outline-secondary">
                                     <i class="fas fa-edit me-1"></i>Editar
                                 </a>
+                                {% if agendamento.saldo > 0 %}
+                                <button type="button" class="btn btn-action btn-outline-success"
+                                        data-bs-toggle="modal" data-bs-target="#modalPagamento"
+                                        data-url="{% url 'orcamentos:registrar_pagamento' agendamento.id %}"
+                                        data-orcamento="{{ agendamento.id }}" data-cliente="{{ agendamento.cliente.nome }}"
+                                        data-total="{{ agendamento.total|stringformat:'.2f' }}" data-pago="{{ agendamento.valor_pago|stringformat:'.2f' }}">
+                                    <i class="fas fa-hand-holding-usd me-1"></i>Pagamento
+                                </button>
+                                {% endif %}
                                 <form action="{% url 'orcamentos:concluir_agendamento' agendamento.id %}" method="POST" style="display: inline;">
                                     {% csrf_token %}
                                     <button type="submit" class="btn btn-action btn-outline-success">
                                         <i class="fas fa-check me-1"></i>Concluir
                                     </button>
                                 </form>
-                                <a href="{% url 'orcamentos:reabrir_agendamento' agendamento.id %}" class="btn btn-action btn-outline-warning">
-                                    <i class="fas fa-redo me-1"></i>Reabrir
-                                </a>
+                                <form action="{% url 'orcamentos:reabrir_agendamento' agendamento.id %}" method="POST" style="display: inline;">
+                                    {% csrf_token %}
+                                    <button type="submit" class="btn btn-action btn-outline-warning">
+                                        <i class="fas fa-redo me-1"></i>Reabrir
+                                    </button>
+                                </form>
+                                <form action="{% url 'orcamentos:alterar_status' agendamento.id %}" method="POST" style="display: inline;">
+                                    {% csrf_token %}
+                                    <input type="hidden" name="status" value="cancelado">
+                                    <input type="hidden" name="next" value="agendamentos">
+                                    <button type="submit" class="btn btn-action btn-outline-danger"
+                                            onclick="return confirm('Cancelar este evento?')">
+                                        <i class="fas fa-ban me-1"></i>Cancelar
+                                    </button>
+                                </form>
                             </div>
                     </div>
                     {% endfor %}
@@ -662,7 +706,7 @@
                                 {% if agendamento.status == 'confirmado' %}status-confirmado
                                 {% elif agendamento.status == 'concluido' %}status-concluido
                                 {% else %}status-pendente{% endif %}">
-                                {{ agendamento.status|title }}
+                                {{ agendamento.get_status_display }}
                             </span>
                     </div>
                     {% endfor %}
@@ -711,7 +755,7 @@
                                         {% elif agendamento.status == 'concluido' %}fa-check-double
                                         {% else %}fa-clock{% endif %} me-1">
                                     </i>
-                                    {{ agendamento.status|title }}
+                                    {{ agendamento.get_status_display }}
                                 </span>
                                 <!-- Dias restantes -->
                                 <small class="text-muted mt-1">
@@ -807,12 +851,18 @@
 
                         <!-- Ações -->
                         <div class="agendamento-actions">
-                            <a href="{% url 'orcamentos:detalhes_orcamento' agendamento.id %}" 
+                            <a href="{% url 'orcamentos:detalhes_orcamento' agendamento.id %}"
                             class="btn btn-action btn-info">
                                 <i class="fas fa-eye"></i>
                                 Detalhes
                             </a>
-                            
+
+                            <a href="{% url 'orcamentos:gerar_checklist_pdf' agendamento.id %}"
+                            class="btn btn-action btn-outline-primary">
+                                <i class="fas fa-clipboard-check"></i>
+                                Checklist
+                            </a>
+
                             {% if agendamento.status == 'confirmado' %}
                             <a href="{% url 'orcamentos:concluir_agendamento' agendamento.id %}" 
                             class="btn btn-action btn-success">
@@ -839,11 +889,36 @@
                             </form>
                             {% endif %}
                             
-                            <a href="{% url 'orcamentos:editar_orcamento' agendamento.id %}" 
+                            <a href="{% url 'orcamentos:editar_orcamento' agendamento.id %}"
                             class="btn btn-action btn-outline-primary">
                                 <i class="fas fa-edit"></i>
                                 Editar
                             </a>
+
+                            {% if agendamento.saldo > 0 %}
+                            <button type="button" class="btn btn-action btn-outline-success"
+                                    data-bs-toggle="modal" data-bs-target="#modalPagamento"
+                                    data-url="{% url 'orcamentos:registrar_pagamento' agendamento.id %}"
+                                    data-orcamento="{{ agendamento.id }}" data-cliente="{{ agendamento.cliente.nome }}"
+                                    data-total="{{ agendamento.total|stringformat:'.2f' }}" data-pago="{{ agendamento.valor_pago|stringformat:'.2f' }}">
+                                <i class="fas fa-hand-holding-usd"></i>
+                                Pagamento
+                            </button>
+                            {% endif %}
+
+                            {% if agendamento.status == 'confirmado' or agendamento.status == 'reagendar' %}
+                            <form method="post" action="{% url 'orcamentos:alterar_status' agendamento.id %}"
+                                class="d-inline">
+                                {% csrf_token %}
+                                <input type="hidden" name="status" value="cancelado">
+                                <input type="hidden" name="next" value="agendamentos">
+                                <button type="submit" class="btn btn-action btn-outline-danger"
+                                        onclick="return confirm('Cancelar este evento?')">
+                                    <i class="fas fa-ban"></i>
+                                    Cancelar
+                                </button>
+                            </form>
+                            {% endif %}
                         </div>
                     </div>
                     {% empty %}
@@ -1019,7 +1094,10 @@
         calendarDays.forEach(day => {
             day.addEventListener('click', function() {
                 const date = this.getAttribute('data-date');
-                window.location.href = '?data=' + date;
+                const params = new URLSearchParams(window.location.search);
+                params.set('data', date);
+                params.delete('periodo');
+                window.location.href = '?' + params.toString();
             });
         });
 
@@ -1036,16 +1114,6 @@
             });
         });
 
-        // Filtros avançados
-        const filterForm = document.querySelector('.filtros-modernos');
-        const filterInputs = filterForm.querySelectorAll('select, input');
-        
-        filterInputs.forEach(input => {
-            input.addEventListener('change', function() {
-                filterForm.submit();
-            });
-        });
-
         // Animação de cards
         const cards = document.querySelectorAll('.agendamento-card');
         cards.forEach((card, index) => {
@@ -1053,4 +1121,6 @@
         });
     });
 </script>
+
+{% include "orcamentos/_modal_pagamento.html" %}
 {% endblock %}

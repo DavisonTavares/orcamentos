@@ -311,7 +311,14 @@
             align-self: stretch;
             justify-content: flex-end;
         }
-        
+
+        /* Alvo de toque maior para os botões de ação (recomendado: 44px) */
+        .btn-icon {
+            width: 40px;
+            height: 40px;
+            font-size: 0.9rem;
+        }
+
         .search-container {
             padding: 0.75rem;
         }
@@ -436,14 +443,14 @@
 
                     <!-- Ações do Cliente no lado direito -->
                 <div class="cliente-actions ms-auto">
-                        <a href="{% url 'orcamentos:cliente_detalhes' cliente.id %}" class="btn btn-sm btn-icon btn-info" title="Detalhes">
+                        <a href="{% url 'orcamentos:cliente_detalhes' cliente.id %}" class="btn btn-sm btn-icon btn-info" title="Detalhes" aria-label="Ver detalhes de {{ cliente.nome }}">
                             <i class="fas fa-eye"></i>
                         </a>
-                        <a href="{% url 'orcamentos:novo_orcamento' %}?cliente_id={{ cliente.id }}" class="btn btn-sm btn-icon btn-primary" title="Novo Orçamento">
+                        <a href="{% url 'orcamentos:novo_orcamento' %}?cliente_id={{ cliente.id }}" class="btn btn-sm btn-icon btn-primary" title="Novo Orçamento" aria-label="Criar novo orçamento para {{ cliente.nome }}">
                             <i class="fas fa-file-invoice"></i>
                         </a>
-                        <a href="https://wa.me/55{{ cliente.telefone|cut:' '|cut:'('|cut:')'|cut:'-' }}" 
-                           target="_blank" class="btn btn-sm btn-icon btn-success" title="WhatsApp">
+                        <a href="https://wa.me/55{{ cliente.telefone|cut:' '|cut:'('|cut:')'|cut:'-' }}"
+                           target="_blank" class="btn btn-sm btn-icon btn-success" title="WhatsApp" aria-label="Enviar WhatsApp para {{ cliente.nome }}">
                             <i class="fab fa-whatsapp"></i>
                         </a>
                     </div>

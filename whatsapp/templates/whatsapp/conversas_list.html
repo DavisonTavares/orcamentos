@@ -1,0 +1,396 @@
+{% extends 'base.html' %}
+{% load static %}
+{% block content %}
+<div class="container-fluid py-0" style="height: 100vh;">
+  <div class="row h-100">
+    <!-- Sidebar de Conversas (Opcional) -->
+    <div class="col-md-4 col-lg-3 d-none d-md-block border-end bg-light">
+      <div class="d-flex flex-column h-100">
+        <!-- Cabeçalho Sidebar -->
+        <div class="p-3 border-bottom bg-white">
+          <div class="d-flex align-items-center">
+            <h5 class="mb-0">Conversas</h5>
+            <div class="ms-auto">
+              <a href="{% url 'historico_mensagens' %}" class="btn btn-sm btn-outline-secondary">
+                <i class="fas fa-list"></i>
+              </a>
+            </div>
+          </div>
+        </div>
+        
+        <!-- Lista de Conversas Simplificada -->
+        <div class="flex-grow-1 overflow-auto">
+          <div class="list-group list-group-flush">
+            {% for conversa in conversas_recentes %}
+              <a href="{% url 'chat_cliente' conversa.phone_number %}" 
+                 class="list-group-item list-group-item-action border-0 py-2 px-3 {% if conversa.phone_number == phone_number %}active{% endif %}">
+                <div class="d-flex align-items-center">
+                  <div class="flex-shrink-0">
+                    <div class="rounded-circle {% if conversa.phone_number == phone_number %}bg-white text-primary{% else %}bg-primary text-white{% endif %} 
+                                d-flex align-items-center justify-content-center fw-bold" 
+                         style="width: 40px; height: 40px; font-size: 14px;">
+                      {{ conversa.nome_cliente|default:"C"|first|upper }}
+                    </div>
+                  </div>
+                  <div class="flex-grow-1 ms-3">
+                    <h6 class="mb-0 small {% if conversa.phone_number == phone_number %}text-white{% endif %}">
+                      {{ conversa.nome_cliente|default:"Cliente WhatsApp"|truncatechars:15 }}
+                    </h6>
+                    <small class="{% if conversa.phone_number == phone_number %}text-white-50{% else %}text-muted{% endif %}">
+                      {{ conversa.phone_number }}
+                    </small>
+                  </div>
+                </div>
+              </a>
+            {% empty %}
+              <div class="text-center text-muted py-4">
+                <i class="fas fa-comments fa-lg mb-2"></i>
+                <p class="small mb-0">Nenhuma conversa</p>
+              </div>
+            {% endfor %}
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Área Principal do Chat -->
+    <div class="col-md-8 col-lg-9">
+      <div class="d-flex flex-column h-100">
+        <!-- Cabeçalho do Chat -->
+        <div class="card border-0 shadow-sm rounded-0">
+          <div class="card-body py-3">
+            <div class="d-flex align-items-center">
+              <a href="{% url 'historico_mensagens' %}" class="btn btn-outline-secondary btn-sm me-3 d-md-none">
+                <i class="fas fa-arrow-left"></i>
+              </a>
+              <div class="flex-shrink-0">
+                <div class="rounded-circle bg-primary d-flex align-items-center justify-content-center text-white fw-bold" 
+                     style="width: 45px; height: 45px; font-size: 16px;">
+                  {{ nome_cliente|first|upper }}
+                </div>
+              </div>
+              <div class="flex-grow-1 ms-3">
+                <div class="d-flex align-items-center">
+                  <h6 class="mb-0 me-2">{{ nome_cliente }}</h6>
+                  {% if cliente_id %}
+                    <span class="badge bg-success bg-opacity-10 text-success border border-success border-opacity-25">
+                      <i class="fas fa-user-check me-1"></i>Cliente
+                    </span>
+                  {% endif %}
+                </div>
+                <small class="text-muted">{{ phone_number }}</small>
+                <div class="mt-1">
+                  <small class="text-muted">
+                    {{ estatisticas.total_mensagens }} mensagens • 
+                    {{ estatisticas.primeira_mensagem|date:"d/m/Y" }}
+                  </small>
+                </div>
+              </div>
+              <div class="dropdown">
+                <button class="btn btn-outline-secondary btn-sm" type="button" data-bs-toggle="dropdown">
+                  <i class="fas fa-ellipsis-v"></i>
+                </button>
+                <ul class="dropdown-menu dropdown-menu-end">
+                  <li>
+                    <a class="dropdown-item" href="#" data-bs-toggle="modal" data-bs-target="#infoModal">
+                      <i class="fas fa-info-circle me-2"></i>Informações
+                    </a>
+                  </li>
+                  {% if cliente_id %}
+                  <li>
+                    <a class="dropdown-item" href="{% url 'admin:orcamentos_cliente_change' cliente_id %}" target="_blank">
+                      <i class="fas fa-external-link-alt me-2"></i>Ver no sistema
+                    </a>
+                  </li>
+                  {% endif %}
+                  <li><hr class="dropdown-divider"></li>
+                  <li>
+                    <a class="dropdown-item text-danger" href="#">
+                      <i class="fas fa-archive me-2"></i>Arquivar conversa
+                    </a>
+                  </li>
+                </ul>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Área de Mensagens -->
+        <div class="card border-0 shadow-sm flex-grow-1 rounded-0 d-flex flex-column">
+          <div class="card-body d-flex flex-column p-0 flex-grow-1">
+            <!-- Indicador de início da conversa -->
+            <div class="text-center py-3 border-bottom">
+              <small class="text-muted bg-light px-3 py-1 rounded-pill">
+                <i class="fas fa-clock me-1"></i>
+                Conversa iniciada em {{ estatisticas.primeira_mensagem|date:"d/m/Y" }}
+              </small>
+            </div>
+            
+            <!-- Mensagens -->
+            <div id="chat-messages" class="flex-grow-1 overflow-auto p-4" style="max-height: calc(100vh - 200px);">
+              {% for mensagem in mensagens %}
+                <!-- Agrupador de data -->
+                {% ifchanged mensagem.data_envio.date %}
+                  <div class="text-center my-4">
+                    <span class="badge bg-secondary bg-opacity-10 text-secondary px-3 py-2">
+                      {{ mensagem.data_envio|date:"l, d \\d\\e F \\d\\e Y"|capfirst }}
+                    </span>
+                  </div>
+                {% endifchanged %}
+                
+                <!-- Mensagem individual -->
+                <div class="d-flex mb-4 {% if mensagem.direcao == 'enviada' %}justify-content-end{% endif %}">
+                  <div class="d-flex align-items-end {% if mensagem.direcao == 'enviada' %}flex-row-reverse{% endif %}" 
+                       style="max-width: 70%;">
+                    
+                    <!-- Avatar (apenas para mensagens recebidas) -->
+                    {% if mensagem.direcao == 'recebida' %}
+                      <div class="flex-shrink-0 me-2">
+                        <div class="rounded-circle bg-secondary d-flex align-items-center justify-content-center text-white" 
+                             style="width: 32px; height: 32px; font-size: 12px;">
+                          {{ nome_cliente|first|upper }}
+                        </div>
+                      </div>
+                    {% endif %}
+                    
+                    <!-- Conteúdo da mensagem -->
+                    <div class="{% if mensagem.direcao == 'enviada' %}me-2{% endif %}">
+                      <div class="{% if mensagem.direcao == 'enviada' %}bg-primary text-white{% else %}bg-light{% endif %} 
+                                rounded-3 px-3 py-2 shadow-sm position-relative">
+                        
+                        <!-- Indicador de tipo de mídia -->
+                        {% if mensagem.tipo != 'texto' %}
+                          <div class="position-absolute top-0 {% if mensagem.direcao == 'enviada' %}start-0{% else %}end-0{% endif %} 
+                                    translate-middle bg-secondary rounded-circle p-1" 
+                               style="width: 20px; height: 20px;" 
+                               title="{{ mensagem.get_tipo_display }}">
+                            <i class="fas 
+                              {% if mensagem.tipo == 'imagem' %}fa-image 
+                              {% elif mensagem.tipo == 'audio' %}fa-microphone 
+                              {% elif mensagem.tipo == 'documento' %}fa-file 
+                              {% elif mensagem.tipo == 'botao' %}fa-square 
+                              {% else %}fa-paperclip{% endif %} 
+                              text-white" style="font-size: 10px;">
+                            </i>
+                          </div>
+                        {% endif %}
+                        
+                        <!-- Conteúdo -->
+                        <div class="message-content">
+                          {% if mensagem.tipo == 'imagem' %}
+                            <div class="text-center">
+                              <i class="fas fa-image fa-2x mb-2 opacity-50"></i>
+                              <p class="small mb-0">Imagem</p>
+                              {% if mensagem.anexo %}
+                                <a href="{{ mensagem.anexo.url }}" target="_blank" class="small">Ver anexo</a>
+                              {% endif %}
+                            </div>
+                          {% elif mensagem.tipo == 'audio' %}
+                            <div class="text-center">
+                              <i class="fas fa-microphone fa-2x mb-2 opacity-50"></i>
+                              <p class="small mb-0">Áudio</p>
+                            </div>
+                          {% elif mensagem.tipo == 'documento' %}
+                            <div class="text-center">
+                              <i class="fas fa-file fa-2x mb-2 opacity-50"></i>
+                              <p class="small mb-0">Documento</p>
+                              {% if mensagem.anexo %}
+                                <a href="{{ mensagem.anexo.url }}" target="_blank" class="small">Baixar</a>
+                              {% endif %}
+                            </div>
+                          {% else %}
+                            {{ mensagem.mensagem|linebreaksbr }}
+                          {% endif %}
+                        </div>
+                        
+                        <!-- Metadados da mensagem -->
+                        <div class="message-time small mt-1 {% if mensagem.direcao == 'enviada' %}text-white-50{% else %}text-muted{% endif %} 
+                                  d-flex justify-content-between align-items-center">
+                          <span>{{ mensagem.data_envio|date:"H:i" }}</span>
+                          {% if mensagem.direcao == 'enviada' %}
+                            <span class="ms-2">
+                              <i class="fas fa-check{% if mensagem.lida %}-double{% endif %}" 
+                                 title="{% if mensagem.lida %}Entregue e lida{% else %}Enviada{% endif %}"></i>
+                            </span>
+                          {% endif %}
+                        </div>
+                      </div>
+                      
+                      <!-- Informações adicionais -->
+                      <div class="small text-muted mt-1 px-2">
+                        {% if mensagem.direcao == 'enviada' and mensagem.usuario %}
+                          <i class="fas fa-user me-1"></i>{{ mensagem.usuario.get_full_name }}
+                        {% endif %}
+                        {% if mensagem.origem %}
+                          <span class="ms-2">
+                            <i class="fas fa-tag me-1"></i>{{ mensagem.origem }}
+                          </span>
+                        {% endif %}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              {% empty %}
+                <div class="text-center text-muted py-5">
+                  <div class="mb-3">
+                    <i class="fas fa-comments fa-3x opacity-25"></i>
+                  </div>
+                  <h5>Nenhuma mensagem ainda</h5>
+                  <p>Inicie a conversa enviando uma mensagem para o cliente.</p>
+                </div>
+              {% endfor %}
+            </div>
+
+            <!-- Formulário de envio -->
+            <div class="border-top bg-light p-3">
+              <form method="post" class="d-flex align-items-end gap-2">
+                {% csrf_token %}
+                
+                <!-- Botões de ação rápida -->
+                <div class="d-flex gap-1 mb-2">
+                  <button type="button" class="btn btn-sm btn-outline-secondary" title="Anexar arquivo">
+                    <i class="fas fa-paperclip"></i>
+                  </button>
+                  <button type="button" class="btn btn-sm btn-outline-secondary" title="Enviar imagem">
+                    <i class="fas fa-image"></i>
+                  </button>
+                  <button type="button" class="btn btn-sm btn-outline-secondary" title="Modelos rápidos">
+                    <i class="fas fa-bolt"></i>
+                  </button>
+                </div>
+                
+                <!-- Campo de texto -->
+                <div class="flex-grow-1">
+                  <textarea name="mensagem" class="form-control" placeholder="Digite sua mensagem..." 
+                            rows="1" style="resize: none;" required id="mensagemInput"></textarea>
+                </div>
+                
+                <!-- Botão de envio -->
+                <button type="submit" class="btn btn-primary px-3" id="sendButton">
+                  <i class="fas fa-paper-plane"></i>
+                </button>
+              </form>
+              
+              <!-- Ações rápidas -->
+              <div class="mt-2 d-flex gap-2 flex-wrap">
+                <button type="button" class="btn btn-sm btn-outline-primary quick-message" data-message="Olá, em que posso ajudar?">
+                  👋 Saudação
+                </button>
+                <button type="button" class="btn btn-sm btn-outline-primary quick-message" data-message="Poderia me passar mais detalhes?">
+                  🔍 Mais detalhes
+                </button>
+                <button type="button" class="btn btn-sm btn-outline-primary quick-message" data-message="Aguarde um momento, por favor.">
+                  ⏱️ Aguarde
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Modal de Informações -->
+<div class="modal fade" id="infoModal" tabindex="-1">
+  <div class="modal-dialog modal-sm">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title">Informações</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body">
+        <div class="text-center mb-3">
+          <div class="rounded-circle bg-primary d-inline-flex align-items-center justify-content-center text-white fw-bold" 
+               style="width: 60px; height: 60px; font-size: 20px;">
+            {{ nome_cliente|first|upper }}
+          </div>
+          <h6 class="mt-2 mb-1">{{ nome_cliente }}</h6>
+          <p class="text-muted small">{{ phone_number }}</p>
+        </div>
+        
+        <div class="border-top pt-3">
+          <h6 class="small text-uppercase text-muted mb-2">Estatísticas</h6>
+          <div class="row text-center">
+            <div class="col-4">
+              <div class="fw-bold text-primary">{{ estatisticas.total_mensagens }}</div>
+              <small class="text-muted">Total</small>
+            </div>
+            <div class="col-4">
+              <div class="fw-bold text-success">{{ estatisticas.mensagens_enviadas }}</div>
+              <small class="text-muted">Enviadas</small>
+            </div>
+            <div class="col-4">
+              <div class="fw-bold text-info">{{ estatisticas.mensagens_recebidas }}</div>
+              <small class="text-muted">Recebidas</small>
+            </div>
+          </div>
+        </div>
+        
+        <div class="border-top pt-3">
+          <h6 class="small text-uppercase text-muted mb-2">Desde</h6>
+          <p class="small mb-0">{{ estatisticas.primeira_mensagem|date:"d/m/Y à\\s H:i" }}</p>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+  document.addEventListener('DOMContentLoaded', function() {
+    const chatMessages = document.getElementById('chat-messages');
+    const mensagemInput = document.getElementById('mensagemInput');
+    const sendButton = document.getElementById('sendButton');
+    
+    // Auto-scroll para a última mensagem
+    function scrollToBottom() {
+      chatMessages.scrollTop = chatMessages.scrollHeight;
+    }
+    
+    scrollToBottom();
+    
+    // Auto-expand textarea
+    mensagemInput.addEventListener('input', function() {
+      this.style.height = 'auto';
+      this.style.height = Math.min(this.scrollHeight, 120) + 'px';
+    });
+    
+    // Mensagens rápidas
+    document.querySelectorAll('.quick-message').forEach(button => {
+      button.addEventListener('click', function() {
+        mensagemInput.value = this.getAttribute('data-message');
+        mensagemInput.focus();
+        mensagemInput.style.height = 'auto';
+        mensagemInput.style.height = Math.min(mensagemInput.scrollHeight, 120) + 'px';
+      });
+    });
+    
+    // Foco automático no campo de mensagem
+    mensagemInput.focus();
+  });
+</script>
+
+<style>
+  .message-content {
+    word-wrap: break-word;
+  }
+  
+  .bg-light {
+    background-color: #f8f9fa !important;
+  }
+  
+  #chat-messages {
+    background: linear-gradient(180deg, #f8f9fa 0%, #ffffff 100%);
+  }
+  
+  /* Animações suaves */
+  .list-group-item {
+    transition: all 0.2s ease;
+  }
+  
+  .list-group-item:hover {
+    background-color: #f8f9fa;
+    transform: translateX(2px);
+  }
+</style>
+{% endblock %}

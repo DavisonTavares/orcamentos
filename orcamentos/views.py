@@ -4,20 +4,31 @@ from django.contrib.auth.decorators import login_required
 from django.utils.decorators import method_decorator
 from django.views.decorators.http import require_http_methods
 from django.views.decorators.csrf import csrf_exempt
-from django.http import HttpResponse, JsonResponse, FileResponse
+from django.http import HttpResponse, JsonResponse, FileResponse, Http404
 from django.contrib import messages
 from django.core.paginator import Paginator
-from django.db.models import Q, Sum, Count, Max
+from django.db.models import Q, Sum, Count, Max, F
 from django.utils import timezone
 from django.conf import settings
 from datetime import timedelta, datetime
+from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
+from django.utils.http import url_has_allowed_host_and_scheme
 import os
 import json
+import mimetypes
+import unicodedata
 
-from .models import Cliente, Item, Orcamento, OrcamentoItem
+from .models import (
+    Cliente, Item, Orcamento, OrcamentoItem, ChecklistItem, LinkCatalogo, TIPOS_EVENTO,
+    arredondar_total, calcular_total,
+)
 from accounts.models import Empresa, Usuario
 from .forms import OrcamentoForm, ClienteForm, ItemForm, OrcamentoSearchForm
-from .utils import gerar_arquivos
+from .utils import gerar_arquivos, gerar_catalogo, gerar_checklist_conferencia, gerar_recibo, gerar_resumo_festas
+from whatsapp.views import (
+    AVISO_NOTA_FISCAL, INTERVALO_ENVIO_EVENTOS, enviar_em_segundo_plano, eventos_em_aberto,
+    formatar_reais, mensagem_pagamento_recebido, status_envio_eventos,
+)
 
 # Decorator personalizado para verificar se o usuário tem acesso à empresa
 def acesso_empresa_required(view_func):
@@ -58,72 +69,108 @@ def lista_orcamentos(request):
     # Obter parâmetros de filtro
     status_filter = request.GET.get('status', 'all')
     sort_by = request.GET.get('sort', 'recentes')
-    search_query = request.GET.get('q', '')
+    search_query = request.GET.get('q', '').strip()
     page_number = request.GET.get('page', 1)
-    
+    por_pagina = request.GET.get('por_pagina', '10')
+    if por_pagina not in OPCOES_POR_PAGINA:
+        por_pagina = '10'
+
     # Base query - apenas orçamentos da empresa do usuário
-    orcamentos = Orcamento.objects.filter(empresa=request.user.empresa).select_related("cliente").prefetch_related("itens")
-    
+    orcamentos = Orcamento.objects.filter(empresa=request.user.empresa)
+
     # Aplicar filtro de status
     if status_filter != 'all':
         orcamentos = orcamentos.filter(status=status_filter)
-    
-    # Aplicar busca
+
+    # Aplicar busca (cliente, telefone, observações, item ou número do orçamento)
     if search_query:
-        orcamentos = orcamentos.filter(
+        busca = (
             Q(cliente__nome__icontains=search_query) |
             Q(cliente__telefone__icontains=search_query) |
             Q(observacoes__icontains=search_query) |
-            Q(itens__item__descricao__icontains=search_query)
-        ).distinct()
-    
-    # Aplicar ordenação
-    if sort_by == 'recentes':
-        orcamentos = orcamentos.order_by('-data_criacao')
-    elif sort_by == 'antigos':
-        orcamentos = orcamentos.order_by('data_criacao')
-    elif sort_by == 'valor-maior':
-        orcamentos = orcamentos.annotate(
-            total_calculado=Sum('itens__quantidade') * Sum('itens__item__valor_unitario')
-        ).order_by('-total_calculado')
-    elif sort_by == 'valor-menor':
-        orcamentos = orcamentos.annotate(
-            total_calculado=Sum('itens__quantidade') * Sum('itens__item__valor_unitario')
-        ).order_by('total_calculado')
-    
-    # Paginação
-    paginator = Paginator(orcamentos, 10)
+            Q(itens__item__descricao__icontains=search_query) |
+            Q(itens__item__nome__icontains=search_query)
+        )
+        numero = search_query.lstrip('#')
+        if numero.isdigit():
+            busca |= Q(id=int(numero))
+        orcamentos = orcamentos.filter(busca).distinct()
+
+    ordem = '-data_criacao' if sort_by != 'antigos' else 'data_criacao'
+
+    # Uma consulta leve (sem montar objetos) com o necessário de TODOS os
+    # orçamentos filtrados: serve para as estatísticas, o valor total e a
+    # ordenação por valor. Os objetos completos só são carregados para a
+    # página atual, lá embaixo.
+    cabecalhos = list(
+        orcamentos.order_by(ordem, '-id')
+        .values_list('id', 'status', 'desconto_geral', 'valor_adicional')
+    )
+    totais = _totais_por_orcamento(cabecalhos)
+
+    ids = [id_ for id_, *_ in cabecalhos]
+    if sort_by in ('valor-maior', 'valor-menor'):
+        ids.sort(key=lambda id_: totais[id_], reverse=(sort_by == 'valor-maior'))
+
+    # Paginação sobre a lista de ids; só a página atual vem do banco completa
+    paginator = Paginator(ids, int(por_pagina))
     page_obj = paginator.get_page(page_number)
-    
-    # Calcular estatísticas apenas para a empresa do usuário
-    total_orcamentos = orcamentos.count()
-    orcamentos_confirmados = orcamentos.filter(status='confirmado').count()
-    orcamentos_pendentes = orcamentos.filter(status='pendente').count()
-    
-    # Calcular valor total
-    valor_total = 0
-    for orcamento in orcamentos:
-        valor_total += orcamento.total
-        
-    valor_total = float(f"{valor_total:.2f}")
+    pagina = Orcamento.objects.filter(id__in=page_obj.object_list) \
+        .select_related('cliente').prefetch_related('itens__item')
+    por_id = {o.id: o for o in pagina}
+    page_obj.object_list = [por_id[id_] for id_ in page_obj.object_list if id_ in por_id]
+
+    # Estatísticas (sobre todos os orçamentos filtrados, não só a página)
+    valor_total = sum(totais.values(), Decimal('0'))
     valor_total = "{:,.2f}".format(valor_total).replace(",", "X").replace(".", ",").replace("X", ".")
-    
+
+    # Parâmetros atuais sem o "page", para os links da paginação manterem os filtros
+    parametros = request.GET.copy()
+    parametros.pop('page', None)
+
     context = {
         'orcamentos': page_obj,
         'page_obj': page_obj,
+        'paginas': paginator.get_elided_page_range(page_obj.number, on_each_side=2, on_ends=1),
+        'parametros_paginacao': parametros.urlencode(),
+        'por_pagina': por_pagina,
+        'opcoes_por_pagina': OPCOES_POR_PAGINA,
         'form': form,
         'status_filter': status_filter,
         'sort_by': sort_by,
         'search_query': search_query,
         'stats': {
-            'total': total_orcamentos,
-            'confirmados': orcamentos_confirmados,
-            'pendentes': orcamentos_pendentes,
+            'total': len(cabecalhos),
+            'confirmados': sum(1 for _, status, *_ in cabecalhos if status == 'confirmado'),
+            'pendentes': sum(1 for _, status, *_ in cabecalhos if status == 'pendente'),
             'valor_total': valor_total,
         }
     }
-    
+
     return render(request, "orcamentos/lista.html", context)
+
+
+OPCOES_POR_PAGINA = ['10', '20', '50']
+
+
+def _totais_por_orcamento(cabecalhos):
+    """
+    Total de cada orçamento em uma única consulta aos itens, usando a mesma
+    fórmula do Orcamento.total (models.calcular_total).
+    cabecalhos: [(id, status, desconto_geral, valor_adicional), ...]
+    """
+    itens_por_orcamento = {}
+    ids = [id_ for id_, *_ in cabecalhos]
+    for orcamento_id, valor, quantidade, desconto in (
+        OrcamentoItem.objects.filter(orcamento_id__in=ids)
+        .values_list('orcamento_id', 'valor', 'quantidade', 'desconto')
+    ):
+        itens_por_orcamento.setdefault(orcamento_id, []).append((valor, quantidade, desconto))
+
+    return {
+        id_: calcular_total(itens_por_orcamento.get(id_, []), desconto_geral, valor_adicional)
+        for id_, _, desconto_geral, valor_adicional in cabecalhos
+    }
 
 @login_required
 @acesso_empresa_required
@@ -141,8 +188,8 @@ def detalhes_orcamento(request, orcamento_id):
     subtotal = 0
     
     for orcamento_item in orcamento.itens.all():
-        valor_item = orcamento_item.quantidade * orcamento_item.item.valor_unitario
-        desconto_item = valor_item * (orcamento_item.item.desconto / 100) if orcamento_item.item.desconto else 0
+        valor_item = orcamento_item.quantidade * orcamento_item.valor
+        desconto_item = valor_item * (orcamento_item.desconto / 100) if orcamento_item.desconto else 0
         total_item = valor_item - desconto_item
         
         itens_com_totais.append({
@@ -292,13 +339,13 @@ def novo_orcamento(request):
                         item_id = key.replace("item_", "")
                         # Garante que o item pertence à empresa
                         item = Item.objects.get(id=item_id, empresa=request.user.empresa)
-                        
+
                         OrcamentoItem.objects.create(
                             orcamento=orcamento,
                             item=item,
                             quantidade=quantidade,
-                            valor=item.valor_unitario,
-                            desconto=item.desconto                                      
+                            valor=valor_item_com_ajuste(item, tipo_evento),
+                            desconto=desconto_efetivo_item(request, item)
                         )
 
                         itens_payload.append({
@@ -343,12 +390,20 @@ def novo_orcamento(request):
         "nome": cliente.nome,
         "telefone": cliente.telefone,
     } for cliente in clientes])
-    
+
+    # Veio da área de clientes com um cliente já escolhido (?cliente_id=...)
+    # — pré-preenche nome/telefone no formulário.
+    cliente_selecionado = None
+    cliente_id = request.GET.get("cliente_id")
+    if cliente_id:
+        cliente_selecionado = clientes.filter(id=cliente_id).first()
+
     return render(request, "orcamentos/novo.html", {
         "clientes": clientes,
         "itens": itens,
         "itens_json": itens_json,
         "clientes_json": clientes_json,
+        "cliente": cliente_selecionado,
     })
 
 @login_required
@@ -396,6 +451,43 @@ def confirmar_conflito(request):
     }
     
     return render(request, "orcamentos/confirmar_conflito.html", context)
+
+# Eventos públicos têm custo/risco operacional maior (fluxo de pessoas não
+# convidadas, desgaste extra dos brinquedos, etc.), por isso o valor de cada
+# item é automaticamente ajustado pra cima nesses casos. Sem estimativa de
+# público o risco é maior (não dá pra dimensionar equipe/material), por
+# isso o ajuste é maior.
+AJUSTE_VALOR_EVENTO_PUBLICO = {
+    "Evento Público (com estimativa de público)": Decimal('1.15'),
+    "Evento Público (sem estimativa de público)": Decimal('1.20'),
+}
+
+# Em "Frente de Loja", as máquinas de buffet têm desgaste/operação maior,
+# então recebem um acréscimo próprio de 35% (só nelas, não no resto do
+# orçamento), arredondado pro inteiro mais próximo (sem centavos).
+AJUSTE_BUFFET_FRENTE_DE_LOJA = Decimal('1.35')
+
+def valor_item_com_ajuste(item, tipo_evento):
+    """Aplica o acréscimo automático de evento público (15%/20%) sobre o
+    valor de catálogo do item, se o tipo de evento for um dos públicos, e o
+    acréscimo de 35% nas máquinas de buffet quando o evento for "Frente de
+    Loja" (arredondado pro inteiro mais próximo)."""
+    fator = AJUSTE_VALOR_EVENTO_PUBLICO.get(tipo_evento, Decimal('1'))
+    valor = Decimal(item.valor_unitario) * fator
+
+    if tipo_evento == "Frente de Loja" and item.categoria == "buffet":
+        valor = (valor * AJUSTE_BUFFET_FRENTE_DE_LOJA).to_integral_value(rounding=ROUND_HALF_UP)
+
+    return valor
+
+def desconto_efetivo_item(request, item):
+    """O desconto padrão do item só é aplicado ao orçamento se o usuário não
+    tiver desmarcado a caixinha "Aplicar desconto padrão" desse item na tela
+    de criar/editar orçamento (campo desconto_ativo_<id> no POST). Sem esse
+    campo (ex.: item sem desconto, checkbox nem chega a existir), assume
+    ativo por padrão."""
+    ativo = request.POST.get(f'desconto_ativo_{item.id}', '1') == '1'
+    return item.desconto if ativo else Decimal('0')
 
 @login_required
 def criar_orcamento(request, clientes, itens, itens_json, ignorar_conflito=False):
@@ -464,8 +556,8 @@ def criar_orcamento(request, clientes, itens, itens_json, ignorar_conflito=False
                         orcamento=orcamento,
                         item=item,
                         quantidade=quantidade,
-                        valor=item.valor_unitario,
-                        desconto=item.desconto
+                        valor=valor_item_com_ajuste(item, tipo_evento),
+                        desconto=desconto_efetivo_item(request, item)
                     )
             except ValueError:
                 pass
@@ -499,8 +591,17 @@ def editar_orcamento(request, orcamento_id):
         "disponivel": True
     } for item in itens])
     
-    # Preparar dados dos itens atuais
-    itens_selecionados = {str(item.item.id): item.quantidade for item in orcamento.itens.all()}
+    # Preparar dados dos itens atuais (inclui se o desconto do item estava
+    # ativo ou foi desligado manualmente neste orçamento: se o valor salvo
+    # em OrcamentoItem.desconto for zero mas o item tiver desconto padrão no
+    # catálogo, é porque foi desativado de propósito ao criar/editar).
+    itens_selecionados = {
+        str(oi.item.id): {
+            "quantidade": oi.quantidade,
+            "desconto_ativo": bool(oi.desconto and oi.desconto > 0),
+        }
+        for oi in orcamento.itens.all()
+    }
     itens_selecionados = json.dumps(itens_selecionados)
     
     if request.method == "POST":
@@ -543,8 +644,8 @@ def editar_orcamento(request, orcamento_id):
                             orcamento=orcamento,
                             item=item,
                             quantidade=quantidade,
-                            valor=item.valor_unitario,
-                            desconto=item.desconto
+                            valor=valor_item_com_ajuste(item, tipo_evento),
+                            desconto=desconto_efetivo_item(request, item)
                         )
                 except ValueError:
                     pass
@@ -580,6 +681,12 @@ def excluir_orcamento(request, orcamento_id):
     
     return render(request, "orcamentos/confirmar_exclusao.html", {"orcamento": orcamento})
 
+def prefixo_nome_documento(orcamento):
+    """Quando o orçamento está confirmado, o documento gerado é uma
+    confirmação de agendamento (ver gerar_arquivos), não mais um orçamento
+    comum — o nome do arquivo baixado reflete isso."""
+    return 'Confirmacao' if orcamento.status == 'confirmado' else 'Orcamento'
+
 @login_required
 @acesso_empresa_required
 def baixar_pdf(request, orcamento_id):
@@ -600,7 +707,7 @@ def baixar_pdf(request, orcamento_id):
         
         try:
             # Serve o arquivo diretamente
-            filename = f'Orcamento_{orcamento.cliente.nome}.pdf'
+            filename = f'{prefixo_nome_documento(orcamento)}_{orcamento.cliente.nome}.pdf'
             response = FileResponse(open(file_path, 'rb'), content_type='application/pdf')
             response['Content-Disposition'] = f'attachment; filename="{filename}"'
             return response
@@ -619,14 +726,10 @@ def gerar_e_baixar_pdf(request, orcamento):
         empresa = orcamento.empresa
         pdf, png = gerar_arquivos(orcamento, empresa)
         
-        # Atualiza o orçamento com os novos arquivos
-        orcamento.pdf = pdf
-        orcamento.png = png
-        orcamento.save()
         
         # Serve o arquivo recém-criado
-        file_path = orcamento.pdf.path
-        filename = f'Orcamento_{orcamento.cliente.nome}.pdf'
+        file_path = pdf 
+        filename = f'{prefixo_nome_documento(orcamento)}_{orcamento.cliente.nome}.pdf'
         
         response = FileResponse(open(file_path, 'rb'), content_type='application/pdf')
         response['Content-Disposition'] = f'attachment; filename="{filename}"'
@@ -635,8 +738,140 @@ def gerar_e_baixar_pdf(request, orcamento):
     except Exception as e:
         #print(f"Erro ao gerar PDF: {str(e)}")
         messages.error(request, 'Erro ao gerar o arquivo PDF.')
+        print(f"Erro ao gerar PDF do orçamento #{orcamento.id}: {str(e)}")
         return redirect("orcamentos:detalhes_orcamento", orcamento_id=orcamento.id)
-    
+
+@login_required
+@acesso_empresa_required
+def baixar_png(request, orcamento_id):
+    """
+    Gera (sob demanda, igual ao PDF) e serve a versão em imagem do
+    orçamento — orçamento normal ou confirmação de agendamento, dependendo
+    do status atual — para facilitar o compartilhamento por WhatsApp.
+    """
+    orcamento = get_object_or_404(Orcamento.objects.filter(empresa=request.user.empresa), id=orcamento_id)
+    try:
+        empresa = orcamento.empresa
+        pdf, png = gerar_arquivos(orcamento, empresa)
+
+        if not png or not os.path.exists(png):
+            messages.error(request, 'Erro ao gerar a imagem do orçamento.')
+            return redirect("orcamentos:detalhes_orcamento", orcamento_id=orcamento.id)
+
+        filename = f'{prefixo_nome_documento(orcamento)}_{orcamento.cliente.nome}.png'
+        response = FileResponse(open(png, 'rb'), content_type='image/png')
+        response['Content-Disposition'] = f'attachment; filename="{filename}"'
+        return response
+
+    except Exception as e:
+        messages.error(request, 'Erro ao gerar a imagem do orçamento.')
+        print(f"Erro ao gerar imagem do orçamento #{orcamento.id}: {str(e)}")
+        return redirect("orcamentos:detalhes_orcamento", orcamento_id=orcamento.id)
+
+@login_required
+@require_http_methods(["POST"])
+def gerar_catalogo_pdf_view(request):
+    """
+    Gera um PDF só com os itens (e quantidades) selecionados na tela de novo
+    orçamento, no mesmo estilo visual do orçamento, mas sem dados de
+    cliente/evento — como um catálogo de preços para mostrar ao cliente antes
+    de fechar o orçamento. Recebe os itens ainda não salvos (orçamento em
+    edição), então busca preço/descrição atuais no banco pelo id do item,
+    ignorando qualquer valor enviado pelo navegador.
+    """
+    if not hasattr(request.user, 'empresa') or not request.user.empresa:
+        return JsonResponse({'erro': 'Usuário sem empresa associada.'}, status=403)
+
+    try:
+        payload = json.loads(request.body)
+    except (json.JSONDecodeError, TypeError):
+        return JsonResponse({'erro': 'Dados inválidos.'}, status=400)
+
+    itens_selecionados = payload.get('itens', [])
+    if not itens_selecionados:
+        return JsonResponse({'erro': 'Selecione ao menos um item.'}, status=400)
+
+    # Mesmo acréscimo de evento público (15%/20%) aplicado ao salvar o
+    # orçamento, pra o catálogo já refletir o valor que vai ser cobrado.
+    tipo_evento = payload.get('tipo_evento', '')
+
+    ids = [i.get('id') for i in itens_selecionados if i.get('id')]
+    itens_por_id = {
+        item.id: item
+        for item in Item.objects.filter(empresa=request.user.empresa, id__in=ids)
+    }
+
+    dados_catalogo = []
+    for sel in itens_selecionados:
+        item = itens_por_id.get(sel.get('id'))
+        if not item:
+            continue
+        try:
+            quantidade = int(sel.get('quantidade', 1) or 1)
+        except (TypeError, ValueError):
+            quantidade = 1
+        if quantidade <= 0:
+            continue
+        dados_catalogo.append({
+            "descricao": item.nome or item.descricao,
+            "quantidade": quantidade,
+            "valor_unitario": float(valor_item_com_ajuste(item, tipo_evento)),
+            "desconto": float(item.desconto or 0),
+        })
+
+    if not dados_catalogo:
+        return JsonResponse({'erro': 'Nenhum item válido encontrado.'}, status=400)
+
+    pdf_path = gerar_catalogo(dados_catalogo, request.user.empresa)
+    if not pdf_path or not os.path.exists(pdf_path):
+        return JsonResponse({'erro': 'Não foi possível gerar o PDF.'}, status=500)
+
+    response = FileResponse(open(pdf_path, 'rb'), content_type='application/pdf')
+    response['Content-Disposition'] = 'attachment; filename="catalogo_mundo_kids.pdf"'
+    return response
+
+@login_required
+@acesso_empresa_required
+def gerar_checklist_pdf_view(request, orcamento_id):
+    """
+    Gera o PDF de conferência (checklist de acessórios por brinquedo) do
+    orçamento, para usar na hora de separar/carregar o material do evento.
+    """
+    orcamento = get_object_or_404(Orcamento.objects.filter(empresa=request.user.empresa), id=orcamento_id)
+
+    pdf_path = gerar_checklist_conferencia(orcamento, request.user.empresa)
+    if not pdf_path or not os.path.exists(pdf_path):
+        messages.error(request, 'Não foi possível gerar o checklist de conferência.')
+        return redirect("orcamentos:detalhes_orcamento", orcamento_id=orcamento_id)
+
+    filename = f'Checklist_{orcamento.cliente.nome}.pdf'
+    response = FileResponse(open(pdf_path, 'rb'), content_type='application/pdf')
+    response['Content-Disposition'] = f'attachment; filename="{filename}"'
+    return response
+
+@login_required
+@acesso_empresa_required
+def gerar_recibo_pdf_view(request, orcamento_id):
+    """
+    Gera um recibo em PDF referente ao valor já pago do orçamento — só faz
+    sentido (e só fica visível na tela) quando há algum valor pago.
+    """
+    orcamento = get_object_or_404(Orcamento.objects.filter(empresa=request.user.empresa), id=orcamento_id)
+
+    if not orcamento.valor_pago or orcamento.valor_pago <= 0:
+        messages.error(request, 'Este orçamento ainda não possui valor pago para gerar recibo.')
+        return redirect("orcamentos:detalhes_orcamento", orcamento_id=orcamento_id)
+
+    pdf_path = gerar_recibo(orcamento, request.user.empresa)
+    if not pdf_path or not os.path.exists(pdf_path):
+        messages.error(request, 'Não foi possível gerar o recibo.')
+        return redirect("orcamentos:detalhes_orcamento", orcamento_id=orcamento_id)
+
+    filename = f'Recibo_{orcamento.cliente.nome}.pdf'
+    response = FileResponse(open(pdf_path, 'rb'), content_type='application/pdf')
+    response['Content-Disposition'] = f'attachment; filename="{filename}"'
+    return response
+
 @login_required
 @acesso_empresa_required
 def alterar_status(request, orcamento_id):
@@ -666,7 +901,7 @@ def alterar_status(request, orcamento_id):
             print("Orçamento concluído, marcando como pago.")
             orcamento.valor_pago = orcamento.total
         orcamento.save()
-        
+        enviar_notificacao_whatsapp(request, orcamento.id)
         # Mensagem de sucesso
         status_display = dict(Orcamento.STATUS_CHOICES).get(novo_status, novo_status)
         messages.success(request, f'Status do orçamento #{orcamento_id} alterado para {status_display}.')
@@ -686,8 +921,87 @@ def alterar_status(request, orcamento_id):
         
         if request.headers.get('X-Requested-With') == 'XMLHttpRequest':
             return JsonResponse({'success': False, 'error': str(e)}, status=500)
-    
+
+    # Permite voltar para a tela de agendamentos quando a ação veio de lá
+    if request.POST.get("next") == "agendamentos":
+        return redirect("orcamentos:agendamentos")
     return redirect("orcamentos:detalhes_orcamento", orcamento_id=orcamento_id)
+
+
+def mensagem_status_cliente(orcamento):
+    """
+    Mensagem de WhatsApp para o cliente conforme o status atual do orçamento.
+    Retorna (mensagem, incluir_recibo) ou (None, False) se o status não avisa.
+    """
+    nome = orcamento.cliente.nome
+    data = orcamento.data_evento.strftime('%d/%m/%Y') if orcamento.data_evento else None
+    do_dia = f" do dia *{data}*" if data else ""
+    status = orcamento.status
+
+    if status == 'pendente':
+        return (
+            f"Da só uma olhadinha, {nome}!\n\n"
+            f"Seu orçamento *#{orcamento.id}* está PRONTOO!! 🥳🎉\n\n"
+            "Dá uma conferida nos detalhes e, se estiver tudo certo, é só confirmar com a gente! ✅\n\n"
+            "Estamos super animados para fazer do seu evento um momento inesquecível! 🎪✨\n"
+            "Qualquer dúvida, é só chamar! 😊\n\n"
+        ), False
+    if status == 'confirmado':
+        return (
+            f"🎉 Olá, {nome}!\n\n"
+            f"Seu orçamento *#{orcamento.id}* foi *confirmado com sucesso* ✅\n\n"
+            "Estamos cuidando de tudo para que seu evento seja incrível! 🎪✨\n"
+            "Se tiver qualquer dúvida ou precisar ajustar algo, é só falar com a gente 😊\n\n"
+            "— Mundo Kids 💙"
+        ), False
+    if status == 'concluido':
+        # Ao concluir o evento o valor pago vira o total, então vai o recibo de quitação junto
+        return (
+            f"🎉 Olá, {nome}!\n\n"
+            f"Seu evento{do_dia} (orçamento *#{orcamento.id}*) foi *concluído* com sucesso! ✅\n\n"
+            "Muito obrigado por escolher a Mundo Kids para fazer parte desse momento! 💙✨\n\n"
+            "🧾 No PDF também está o *recibo* de quitação.\n\n"
+            f"{AVISO_NOTA_FISCAL}"
+            "Se puder, conta pra gente como foi a festa! 😊\n\n"
+            "— Mundo Kids 💙"
+        ), True
+    if status == 'reagendar':
+        return (
+            f"Olá, {nome}! 😊\n\n"
+            f"Seu evento{do_dia} (orçamento *#{orcamento.id}*) foi marcado para *reagendamento* 📅\n\n"
+            "Em breve entramos em contato para combinar a nova data. "
+            "Se você já tiver uma data em mente, é só mandar por aqui!\n\n"
+            "— Mundo Kids 💙"
+        ), False
+    if status == 'cancelado':
+        return (
+            f"Olá, {nome}.\n\n"
+            f"Seu evento{do_dia} (orçamento *#{orcamento.id}*) foi *cancelado*.\n\n"
+            "Se foi um engano ou se quiser remarcar para outra data, é só chamar a gente por aqui. "
+            "Vamos adorar fazer parte da sua festa! 💙\n\n"
+            "— Mundo Kids"
+        ), False
+    return None, False
+
+
+@login_required
+def enviar_notificacao_whatsapp(request, orcamento_id):
+    """
+    Avisa o cliente pelo WhatsApp (via n8n) da mudança de status, com o PDF
+    do orçamento. O envio roda em segundo plano para a tela não travar.
+    """
+    try:
+        orcamento = Orcamento.objects.select_related('cliente').get(id=orcamento_id, empresa=request.user.empresa)
+        mensagem, incluir_recibo = mensagem_status_cliente(orcamento)
+        if mensagem:
+            enviar_em_segundo_plano(
+                orcamento.cliente.telefone, mensagem, orcamento.id, incluir_recibo=incluir_recibo
+            )
+    except Exception as e:
+        print(f"Erro ao enviar notificação via WhatsApp: {str(e)}")
+
+    return redirect("orcamentos:detalhes_orcamento", orcamento_id=orcamento_id)
+        
 
 # Views para Clientes (filtrados por empresa)
 @login_required
@@ -808,39 +1122,60 @@ def lista_itens(request):
             orcamento__empresa=request.user.empresa,
             orcamento__status__in=['confirmado', 'concluido']
         ).count()  
-        item.faturamento = (item.uso_count * item.valor_unitario) - ((item.uso_count * item.valor_unitario) * (35 / 100) if item.desconto else 0)
+        # (35/100) é int/int em Python 3, que dá float — e Decimal não pode
+        # ser multiplicado por float diretamente. Por isso usamos Decimal('0.35').
+        item.faturamento = (item.uso_count * item.valor_unitario) - ((item.uso_count * item.valor_unitario) * Decimal('0.35') if item.desconto else 0)
     
     return render(request, "orcamentos/itensLista.html", {"itens": itens})
+
+def salvar_checklist_item(request, item):
+    """
+    Substitui os itens do checklist de conferência pelo que veio do
+    formulário (campo repetido checklist_itens[]), na ordem em que foram
+    enviados. Ignora entradas em branco.
+    """
+    textos = [t.strip() for t in request.POST.getlist('checklist_itens[]') if t.strip()]
+    item.checklist_itens.all().delete()
+    ChecklistItem.objects.bulk_create([
+        ChecklistItem(item=item, descricao=texto, ordem=ordem)
+        for ordem, texto in enumerate(textos)
+    ])
 
 @login_required
 def novo_item(request):
     if request.method == "POST":
-        form = ItemForm(request.POST)
+        form = ItemForm(request.POST, request.FILES)
         if form.is_valid():
             item = form.save(commit=False)
             item.empresa = request.user.empresa  # Associa à empresa do usuário
             item.save()
+            salvar_checklist_item(request, item)
             messages.success(request, 'Item cadastrado com sucesso!')
             return redirect("orcamentos:lista_itens")
     else:
         form = ItemForm()
-    
+
     return render(request, "orcamentos/itens.html", {"form": form})
 
 @login_required
 def editar_item(request, item_id):
     item = get_object_or_404(Item.objects.filter(empresa=request.user.empresa), id=item_id)
-    
+
     if request.method == "POST":
-        form = ItemForm(request.POST, instance=item)
+        form = ItemForm(request.POST, request.FILES, instance=item)
         if form.is_valid():
             form.save()
+            salvar_checklist_item(request, item)
             messages.success(request, 'Item atualizado com sucesso!')
             return redirect("orcamentos:lista_itens")
     else:
         form = ItemForm(instance=item)
-    
-    return render(request, "orcamentos/itens.html", {"form": form, "item": item})
+
+    return render(request, "orcamentos/itens.html", {
+        "form": form,
+        "item": item,
+        "checklist_itens": item.checklist_itens.all(),
+    })
 
 @login_required
 def excluir_item(request, item_id):
@@ -876,6 +1211,14 @@ def agendamentos(request):
             mes_atual = datetime.strptime(mes_filter, '%Y-%m').date().replace(day=1)
         except ValueError:
             mes_atual = hoje.replace(day=1)
+    elif data_filter:
+        # Se o usuário clicou em um dia do calendário (?data=...) sem informar
+        # o mês, mantém o calendário no mês da data selecionada em vez de
+        # voltar sempre para o mês atual.
+        try:
+            mes_atual = datetime.strptime(data_filter, '%Y-%m-%d').date().replace(day=1)
+        except ValueError:
+            mes_atual = hoje.replace(day=1)
     else:
         mes_atual = hoje.replace(day=1)
     
@@ -883,11 +1226,13 @@ def agendamentos(request):
     mes_anterior = (mes_atual - timedelta(days=1)).replace(day=1)
     mes_proximo = (mes_atual + timedelta(days=32)).replace(day=1)
     
-    # Apenas orçamentos da empresa do usuário
+    # Apenas orçamentos da empresa do usuário. O cliente e os itens já vêm
+    # junto (select/prefetch) porque cada card mostra o cliente e calcula
+    # total/saldo várias vezes — sem isso era uma consulta por card/cálculo.
     orcamentos = Orcamento.objects.filter(
-        empresa=request.user.empresa, 
-        status__in=['confirmado', 'concluido', 'reagendado']  # Excluir pendentes e cancelados
-    )
+        empresa=request.user.empresa,
+        status__in=['confirmado', 'concluido', 'reagendar']  # Excluir pendentes e cancelados
+    ).select_related('cliente').prefetch_related('itens')
     
     # Orçamentos pendentes de conclusão (confirmados com data passada)
     orcamentos_para_concluir = orcamentos.filter(
@@ -939,30 +1284,52 @@ def agendamentos(request):
         empresa=request.user.empresa,
         status='concluido',
         data_evento__gte=hoje - timedelta(days=30)
-    ).order_by('-data_evento')
+    ).select_related('cliente').prefetch_related('itens').order_by('-data_evento')
     
     # Gerar calendário para o mês atual
-    primeiro_dia_semana = (mes_atual - timedelta(days=mes_atual.weekday()))
-    
+    # O cabeçalho do calendário começa no domingo (Dom, Seg, Ter...), mas
+    # date.weekday() considera segunda-feira = 0. Sem essa conversão, a
+    # grade começava sempre na segunda-feira anterior e todos os dias
+    # ficavam desalinhados uma coluna à frente do dia da semana correto.
+    dias_ate_domingo_anterior = (mes_atual.weekday() + 1) % 7
+    primeiro_dia_semana = mes_atual - timedelta(days=dias_ate_domingo_anterior)
+
+    data_selecionada = None
+    if data_filter:
+        try:
+            data_selecionada = datetime.strptime(data_filter, '%Y-%m-%d').date()
+        except ValueError:
+            data_selecionada = None
+
+    # Dias da grade (6 semanas) que têm evento, numa única consulta
+    ultimo_dia_grade = primeiro_dia_semana + timedelta(days=41)
+    dias_com_evento = set(
+        Orcamento.objects.filter(
+            empresa=request.user.empresa,
+            data_evento__range=[primeiro_dia_semana, ultimo_dia_grade],
+            status__in=['confirmado', 'concluido', 'reagendar']  # mesmo critério usado para "agendamentos" nesta tela
+        ).values_list('data_evento', flat=True).distinct()
+    )
+
     dias_calendario = []
     for i in range(42):  # 6 semanas
         dia = primeiro_dia_semana + timedelta(days=i)
-        tem_eventos = Orcamento.objects.filter(
-            empresa=request.user.empresa,
-            data_evento=dia,
-            status__in=['confirmado', 'pendente']
-        ).exists()
-        
+        tem_eventos = dia in dias_com_evento
+
         dias_calendario.append({
             'dia': dia.day,
             'data': dia.strftime('%Y-%m-%d'),
             'hoje': dia == hoje,
             'eventos': tem_eventos,
-            'mes_atual': dia.month == mes_atual.month
+            'mes_atual': dia.month == mes_atual.month,
+            'selecionado': data_selecionada is not None and dia == data_selecionada,
         })
     
     context = {
         'orcamentos_para_concluir': orcamentos_para_concluir,
+        'eventos_em_aberto_count': eventos_em_aberto(request.user.empresa).count(),
+        'envio_em_andamento': status_envio_eventos(),
+        'intervalo_envio_eventos': INTERVALO_ENVIO_EVENTOS,
         'agendamentos_hoje': agendamentos_hoje,
         'proximos_agendamentos': proximos_agendamentos,
         'agendamentos_concluidos': agendamentos_concluidos,
@@ -1005,10 +1372,11 @@ def concluir_agendamento(request, orcamento_id):
             orcamento.pdf = None
         
         orcamento.save()
-        
+        enviar_notificacao_whatsapp(request, orcamento.id)
+
         messages.success(request, f'Agendamento #{orcamento.id} concluído com sucesso!')
         return redirect('orcamentos:agendamentos')
-    
+
     return render(request, 'orcamentos/concluir_agendamento.html', {'orcamento': orcamento})
 
 @login_required
@@ -1022,5 +1390,380 @@ def reabrir_agendamento(request, orcamento_id):
         
         messages.success(request, f'Agendamento #{orcamento.id} reaberto com sucesso!')
         return redirect('orcamentos:agendamentos')
-    
+
     return redirect('orcamentos:agendamentos')
+
+
+@login_required
+@acesso_empresa_required
+@require_http_methods(["POST"])
+def registrar_pagamento(request, orcamento_id):
+    """
+    Modal "Registrar pagamento": soma o valor recebido ao valor pago do
+    orçamento, sem precisar abrir a edição completa, e (se marcado) envia o
+    recibo atualizado para o cliente pelo WhatsApp com o aviso de nota fiscal.
+    """
+    orcamento = get_object_or_404(
+        Orcamento.objects.filter(empresa=request.user.empresa).select_related('cliente'),
+        id=orcamento_id
+    )
+
+    # Volta para a tela de onde o modal foi aberto
+    destino = request.POST.get('next', '')
+    if not url_has_allowed_host_and_scheme(destino, allowed_hosts={request.get_host()}):
+        destino = reverse('orcamentos:detalhes_orcamento', args=[orcamento.id])
+
+    try:
+        valor = Decimal(request.POST.get('valor', '').replace(',', '.')).quantize(Decimal('0.01'))
+    except (InvalidOperation, ValueError):
+        valor = Decimal('0')
+    if valor <= 0:
+        messages.error(request, 'Informe um valor de pagamento maior que zero.')
+        return redirect(destino)
+
+    orcamento.valor_pago = (orcamento.valor_pago or Decimal('0')) + valor
+    orcamento.save(update_fields=['valor_pago'])
+
+    # O total pode ter mais de 2 casas decimais; arredonda para não sobrar "R$ 0,00"
+    saldo = Decimal(orcamento.saldo).quantize(Decimal('0.01'))
+    aviso = f'Pagamento de {formatar_reais(valor)} registrado no orçamento #{orcamento.id}. '
+    if saldo > 0:
+        aviso += f'Saldo restante: {formatar_reais(saldo)}.'
+    elif saldo < 0:
+        aviso += f'Atenção: o valor pago passou do total em {formatar_reais(-saldo)}.'
+    else:
+        aviso += 'Orçamento quitado!'
+
+    if request.POST.get('enviar_recibo') == '1':
+        enviar_em_segundo_plano(
+            orcamento.cliente.telefone,
+            mensagem_pagamento_recebido(orcamento, valor),
+            orcamento.id,
+            somente_recibo=True,
+        )
+        aviso += ' O recibo está sendo enviado ao cliente pelo WhatsApp.'
+
+    messages.success(request, aviso)
+    return redirect(destino)
+
+# Categorias de itens que saem para a festa (brinquedos, máquinas de pipoca/
+# algodão doce/crepe, gerador...). Ficam de fora itens personalizados/insumos.
+CATEGORIAS_EQUIPAMENTO = ['brinquedo', 'buffet', 'outro']
+
+
+# Para a escala de monitores: cada brinquedo/máquina pede 1 monitor, menos os
+# que ficam sem ninguém tomando conta. Os nomes são comparados sem acento e
+# sem diferenciar maiúsculas, e basta o nome do item conter um destes trechos.
+CATEGORIAS_COM_MONITOR = ['brinquedo', 'buffet']
+ITENS_SEM_MONITOR = [
+    'piscina de bolinha',
+    'chute ao gol', 'chute a gol',
+    'fliperama',
+    'pega toupeira', 'pega topeira',
+]
+
+
+def _normalizar(texto):
+    sem_acento = unicodedata.normalize('NFKD', texto or '').encode('ascii', 'ignore').decode()
+    return ' '.join(sem_acento.lower().split())
+
+
+def _monitores_do_item(item):
+    """
+    Quantos monitores uma unidade do item precisa. Combos (ex.: "COMBO
+    PROMOCIONAL - TOBOGÃ + ALGODÃO DOCE") contam cada parte separada por "+".
+    """
+    if item.categoria not in CATEGORIAS_COM_MONITOR:
+        return 0
+    nome = _normalizar(item.nome or item.descricao)
+    partes = nome.rsplit(' - ', 1)[-1].split('+') if '+' in nome else [nome]
+    return sum(
+        1 for parte in partes
+        if not any(sem_monitor in parte for sem_monitor in ITENS_SEM_MONITOR)
+    )
+
+
+def _hora_fim_evento(orcamento):
+    """Horário de término (início + duração em horas), ou None se não der para calcular."""
+    try:
+        inicio = datetime.combine(orcamento.data_evento, orcamento.hora_evento)
+        return (inicio + timedelta(hours=int(orcamento.periodo_evento))).strftime('%H:%M')
+    except (TypeError, ValueError):
+        return None
+
+
+def _montar_resumo_festas(empresa, data_inicio, data_fim, incluir_concluidos, somente_brinquedos,
+                          para_monitores=False):
+    """
+    Busca as festas (orçamentos confirmados/reagendados, e opcionalmente os
+    concluídos) do período e devolve a lista de festas com seus itens e o
+    total de cada brinquedo no período, já no formato usado pela tela e pelo PDF.
+    Com para_monitores=True, deixa de fora os eventos sem monitoria e as
+    festas que não precisam de nenhum monitor.
+    """
+    status_validos = ['confirmado', 'reagendar']
+    if incluir_concluidos:
+        status_validos.append('concluido')
+
+    orcamentos = (
+        Orcamento.objects
+        .filter(empresa=empresa, status__in=status_validos,
+                data_evento__range=[data_inicio, data_fim])
+        .select_related('cliente')
+        .prefetch_related('itens__item')
+        .order_by('data_evento', 'hora_evento')
+    )
+    if para_monitores:
+        orcamentos = orcamentos.exclude(tipo_evento='Evento Sem Monitoria')
+
+    festas = []
+    totais = {}
+    for orcamento in orcamentos:
+        # Monitores contam sobre todos os itens, independente do filtro de categoria
+        monitores = sum(_monitores_do_item(oi.item) * oi.quantidade for oi in orcamento.itens.all())
+        if para_monitores and monitores == 0:
+            continue
+
+        itens = []
+        for oi in orcamento.itens.all():
+            if somente_brinquedos and oi.item.categoria not in CATEGORIAS_EQUIPAMENTO:
+                continue
+            nome = oi.item.nome or oi.item.descricao
+            itens.append((nome, oi.quantidade))
+            totais[nome] = totais.get(nome, 0) + oi.quantidade
+
+        festas.append({
+            'id': orcamento.id,
+            'data': orcamento.data_evento,
+            'hora': orcamento.hora_evento.strftime('%H:%M') if hasattr(orcamento.hora_evento, 'strftime') else str(orcamento.hora_evento or '-'),
+            'hora_fim': _hora_fim_evento(orcamento),
+            'tipo_evento': orcamento.tipo_evento,
+            'cliente': orcamento.cliente.nome,
+            'monitores': monitores,
+            'itens': itens,
+        })
+
+    totais_ordenados = sorted(totais.items(), key=lambda t: (-t[1], t[0]))
+    return festas, totais_ordenados
+
+
+def _agrupar_monitores_por_dia(festas):
+    """Agrupa as festas por dia com o total de monitores de cada dia (prévia da escala)."""
+    dias = []
+    for festa in festas:
+        if not dias or dias[-1]['data'] != festa['data']:
+            dias.append({'data': festa['data'], 'total': 0, 'festas': []})
+        dias[-1]['festas'].append(festa)
+        dias[-1]['total'] += festa['monitores']
+    return dias
+
+
+@login_required
+@acesso_empresa_required
+def resumo_festas(request):
+    """
+    Área para gerar um PDF simplificado das festas de um período: dia, tipo
+    de evento, brinquedos e quantidades. Mostra uma prévia na tela e, com
+    ?formato=pdf, baixa o PDF com os mesmos filtros.
+    """
+    hoje = timezone.now().date()
+
+    def ler_data(nome, padrao):
+        try:
+            return datetime.strptime(request.GET.get(nome, ''), '%Y-%m-%d').date()
+        except ValueError:
+            return padrao
+
+    data_inicio = ler_data('data_inicio', hoje)
+    data_fim = ler_data('data_fim', hoje + timedelta(days=6))
+    if data_fim < data_inicio:
+        data_inicio, data_fim = data_fim, data_inicio
+
+    # Checkboxes: na primeira visita (sem filtros) "somente brinquedos" vem marcado
+    filtrado = 'data_inicio' in request.GET
+    incluir_concluidos = request.GET.get('concluidos') == '1'
+    somente_brinquedos = request.GET.get('brinquedos') == '1' if filtrado else True
+    para_monitores = request.GET.get('monitores') == '1'
+
+    festas, totais = _montar_resumo_festas(
+        request.user.empresa, data_inicio, data_fim, incluir_concluidos, somente_brinquedos,
+        para_monitores
+    )
+    periodo = f"{data_inicio.strftime('%d/%m/%Y')} a {data_fim.strftime('%d/%m/%Y')}"
+
+    if request.GET.get('formato') == 'pdf':
+        pdf_path = gerar_resumo_festas(festas, totais, periodo, request.user.empresa, para_monitores)
+        if not pdf_path or not os.path.exists(pdf_path):
+            messages.error(request, 'Não foi possível gerar o resumo de festas.')
+            return redirect('orcamentos:resumo_festas')
+        prefixo = "Escala_Monitores" if para_monitores else "Resumo_Festas"
+        filename = f"{prefixo}_{data_inicio.strftime('%d-%m')}_a_{data_fim.strftime('%d-%m-%Y')}.pdf"
+        response = FileResponse(open(pdf_path, 'rb'), content_type='application/pdf')
+        response['Content-Disposition'] = f'attachment; filename="{filename}"'
+        return response
+
+    context = {
+        'festas': festas,
+        'totais': totais,
+        'total_unidades': sum(qtd for _, qtd in totais),
+        'periodo': periodo,
+        'data_inicio': data_inicio.strftime('%Y-%m-%d'),
+        'data_fim': data_fim.strftime('%Y-%m-%d'),
+        'incluir_concluidos': incluir_concluidos,
+        'somente_brinquedos': somente_brinquedos,
+        'para_monitores': para_monitores,
+        'dias_monitores': _agrupar_monitores_por_dia(festas) if para_monitores else [],
+        'query_pdf': request.GET.urlencode(),
+    }
+    return render(request, 'orcamentos/resumo_festas.html', context)
+
+
+# ========================== CATÁLOGO ONLINE ==========================
+
+# Ordem e nomes das seções do catálogo público (combos ganham seção própria)
+SECOES_CATALOGO = [
+    ('combo', 'Combos e Promoções'),
+    ('brinquedo', 'Brinquedos'),
+    ('buffet', 'Buffet e Máquinas'),
+    ('decoracao', 'Decoração'),
+    ('comida', 'Comidas'),
+    ('servico', 'Serviços'),
+    ('personalizado', 'Personalizados'),
+    ('buffet_personalizado', 'Buffet Personalizado'),
+    ('outro', 'Outros'),
+]
+
+
+def _url_catalogo(request, link):
+    """
+    Endereço completo do link. Se CATALOGO_URL_BASE estiver definido no .env
+    (ex.: o domínio público do sistema), usa ele; senão usa o endereço por onde
+    o sistema está sendo acessado agora.
+    """
+    caminho = reverse('catalogo:publico', args=[link.token])
+    base = getattr(settings, 'CATALOGO_URL_BASE', '') or ''
+    return base.rstrip('/') + caminho if base else request.build_absolute_uri(caminho)
+
+
+@login_required
+@acesso_empresa_required
+def links_catalogo(request):
+    """
+    Tela interna: um link de catálogo por tipo de evento (cada tipo tem seus
+    preços). Permite gerar/trocar o link (o antigo para de funcionar) e desativar.
+    """
+    empresa = request.user.empresa
+
+    if request.method == 'POST':
+        acao = request.POST.get('acao')
+        tipo = request.POST.get('tipo_evento')
+        if tipo not in TIPOS_EVENTO:
+            messages.error(request, 'Tipo de evento inválido.')
+        elif acao == 'gerar':
+            trocou = LinkCatalogo.objects.filter(empresa=empresa, tipo_evento=tipo, ativo=True).update(ativo=False)
+            LinkCatalogo.objects.create(empresa=empresa, tipo_evento=tipo)
+            messages.success(
+                request,
+                f'Novo link gerado para "{tipo}".' + (' O link anterior parou de funcionar.' if trocou else '')
+            )
+        elif acao == 'desativar':
+            LinkCatalogo.objects.filter(empresa=empresa, tipo_evento=tipo, ativo=True).update(ativo=False)
+            messages.warning(request, f'Link de "{tipo}" desativado. Quem tiver o link não consegue mais abrir.')
+        return redirect('orcamentos:links_catalogo')
+
+    ativos = {l.tipo_evento: l for l in LinkCatalogo.objects.filter(empresa=empresa, ativo=True)}
+    linhas = []
+    for tipo in TIPOS_EVENTO:
+        link = ativos.get(tipo)
+        linhas.append({
+            'tipo': tipo,
+            'link': link,
+            'url': _url_catalogo(request, link) if link else '',
+        })
+    return render(request, 'orcamentos/catalogo_links.html', {
+        'linhas': linhas,
+        'itens_sem_foto': _itens_catalogo(empresa).filter(Q(imagem='') | Q(imagem__isnull=True)).count(),
+    })
+
+
+def _link_ativo_ou_404(token):
+    return get_object_or_404(LinkCatalogo.objects.select_related('empresa'), token=token, ativo=True)
+
+
+def _itens_catalogo(empresa):
+    return Item.objects.filter(empresa=empresa, exibir_catalogo=True, disponivel=True)
+
+
+def catalogo_publico(request, token):
+    """
+    Catálogo aberto (sem login) enviado ao cliente. Mostra os preços do tipo
+    de evento do link — e só dele; o nome do tipo não aparece na página.
+    """
+    link = _link_ativo_ou_404(token)
+    empresa = link.empresa
+    LinkCatalogo.objects.filter(pk=link.pk).update(acessos=F('acessos') + 1)
+
+    secoes = {chave: [] for chave, _ in SECOES_CATALOGO}
+    for item in _itens_catalogo(empresa).order_by('nome', 'descricao'):
+        # Mesmo preço que o orçamento usaria para esse tipo de evento,
+        # arredondado em reais inteiros como o total dos orçamentos
+        valor = arredondar_total(valor_item_com_ajuste(item, link.tipo_evento))
+        desconto = item.desconto or Decimal('0')
+        valor_pix = arredondar_total(valor * (Decimal('100') - desconto) / Decimal('100')) if desconto > 0 else None
+        nome = item.nome or item.descricao
+        chave = 'combo' if 'combo' in _normalizar(nome) else item.categoria
+        secoes.setdefault(chave, []).append({
+            'id': item.id,
+            'nome': nome,
+            'descricao': item.descricao if item.nome and item.descricao != item.nome else '',
+            'tem_foto': bool(item.imagem),
+            'valor': valor,
+            'valor_pix': valor_pix,
+        })
+
+    whatsapp = ''.join(c for c in (empresa.whatsapp or '') if c.isdigit())
+    if whatsapp and not whatsapp.startswith('55'):
+        whatsapp = '55' + whatsapp
+
+    return render(request, 'orcamentos/catalogo_publico.html', {
+        'empresa': empresa,
+        'token': token,
+        'tem_logo': bool(empresa.logo),
+        'secoes': [(titulo, secoes[chave]) for chave, titulo in SECOES_CATALOGO if secoes.get(chave)],
+        'whatsapp': whatsapp,
+        'cor': empresa.cor_principal or '#2463EB',
+    })
+
+
+def _servir_imagem(arquivo):
+    try:
+        resposta = FileResponse(arquivo.open('rb'), content_type=mimetypes.guess_type(arquivo.name)[0] or 'image/jpeg')
+    except (FileNotFoundError, ValueError):
+        raise Http404('Imagem não encontrada')
+    resposta['Cache-Control'] = 'public, max-age=86400'
+    return resposta
+
+
+def catalogo_foto(request, token, item_id):
+    """Foto de um item do catálogo — só para itens visíveis em um link ativo."""
+    link = _link_ativo_ou_404(token)
+    item = get_object_or_404(_itens_catalogo(link.empresa), id=item_id)
+    if not item.imagem:
+        raise Http404('Item sem foto')
+    return _servir_imagem(item.imagem)
+
+
+def catalogo_logo(request, token):
+    link = _link_ativo_ou_404(token)
+    if not link.empresa.logo:
+        raise Http404('Empresa sem logo')
+    return _servir_imagem(link.empresa.logo)
+
+
+@login_required
+def foto_item(request, item_id):
+    """Foto do item para as telas internas (não depende da pasta media pública)."""
+    item = get_object_or_404(Item.objects.filter(empresa=request.user.empresa), id=item_id)
+    if not item.imagem:
+        raise Http404('Item sem foto')
+    return _servir_imagem(item.imagem)

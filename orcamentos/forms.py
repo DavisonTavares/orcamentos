@@ -36,7 +36,8 @@ class ClienteForm(forms.ModelForm):
 class ItemForm(forms.ModelForm):
     class Meta:
         model = Item
-        fields = ['nome', 'descricao', 'valor_unitario', 'desconto', 'categoria', 'disponivel', 'investimento', 'custo_fixo', 'percentual_lucro']
+        fields = ['nome', 'descricao', 'valor_unitario', 'desconto', 'categoria', 'disponivel', 'investimento', 'custo_fixo', 'percentual_lucro',
+                  'imagem', 'exibir_catalogo']
         widgets = {
             'nome': forms.TextInput(attrs={
                 'class': 'form-control',

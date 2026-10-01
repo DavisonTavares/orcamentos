@@ -1,0 +1,123 @@
+{% extends "base.html" %}
+
+{% block title %}Catálogo Online - Mundo Kids{% endblock %}
+
+{% block content %}
+<div class="container py-4">
+    <div class="d-flex flex-wrap justify-content-between align-items-center gap-3 mb-4">
+        <div>
+            <h1 class="h2 mb-1"><i class="fas fa-store me-2"></i>Catálogo Online</h1>
+            <p class="text-muted mb-0">
+                Um link por tipo de evento, cada um com os preços daquele tipo.
+                O cliente só vê os preços do link que você enviar.
+            </p>
+        </div>
+        <a href="{% url 'orcamentos:lista_itens' %}" class="btn btn-outline-secondary">
+            <i class="fas fa-cube me-2"></i>Itens e fotos
+        </a>
+    </div>
+
+    {% if itens_sem_foto %}
+    <div class="alert alert-warning d-flex align-items-center gap-2">
+        <i class="fas fa-camera"></i>
+        <div>
+            {{ itens_sem_foto }} item(ns) do catálogo ainda sem foto.
+            Adicione em <a href="{% url 'orcamentos:lista_itens' %}">Itens</a> → Editar → "Catálogo Online".
+        </div>
+    </div>
+    {% endif %}
+
+    <div class="card shadow-sm border-0">
+        <div class="list-group list-group-flush">
+            {% for linha in linhas %}
+            <div class="list-group-item py-3">
+                <div class="d-flex flex-wrap justify-content-between align-items-center gap-2">
+                    <div>
+                        <strong>{{ linha.tipo }}</strong>
+                        {% if linha.link %}
+                        <span class="badge bg-success ms-1">Ativo</span>
+                        <div class="small text-muted">
+                            {{ linha.link.acessos }} acesso{{ linha.link.acessos|pluralize }} ·
+                            criado em {{ linha.link.criado_em|date:"d/m/Y" }}
+                        </div>
+                        {% else %}
+                        <span class="badge bg-secondary ms-1">Sem link</span>
+                        {% endif %}
+                    </div>
+
+                    <div class="d-flex flex-wrap gap-2">
+                        {% if linha.link %}
+                        <button type="button" class="btn btn-sm btn-primary btn-copiar" data-url="{{ linha.url }}">
+                            <i class="fas fa-copy me-1"></i>Copiar link
+                        </button>
+                        <a class="btn btn-sm btn-success" target="_blank" rel="noopener"
+                           href="https://wa.me/?text={{ 'Olá! Segue o nosso catálogo com os brinquedos e valores 😊 '|urlencode }}{{ linha.url|urlencode }}">
+                            <i class="fab fa-whatsapp me-1"></i>Enviar
+                        </a>
+                        <a class="btn btn-sm btn-outline-secondary" href="{{ linha.url }}" target="_blank" rel="noopener" title="Ver como o cliente vê">
+                            <i class="fas fa-eye"></i>
+                        </a>
+                        {% endif %}
+
+                        <form method="post" class="d-inline"
+                              {% if linha.link %}onsubmit="return confirm('Gerar um novo link para {{ linha.tipo|escapejs }}?\n\nO link atual para de funcionar para quem já recebeu.')"{% endif %}>
+                            {% csrf_token %}
+                            <input type="hidden" name="acao" value="gerar">
+                            <input type="hidden" name="tipo_evento" value="{{ linha.tipo }}">
+                            <button type="submit" class="btn btn-sm btn-outline-primary">
+                                <i class="fas fa-link me-1"></i>{% if linha.link %}Gerar novo{% else %}Criar link{% endif %}
+                            </button>
+                        </form>
+
+                        {% if linha.link %}
+                        <form method="post" class="d-inline"
+                              onsubmit="return confirm('Desativar o link de {{ linha.tipo|escapejs }}? Quem já recebeu não vai conseguir abrir.')">
+                            {% csrf_token %}
+                            <input type="hidden" name="acao" value="desativar">
+                            <input type="hidden" name="tipo_evento" value="{{ linha.tipo }}">
+                            <button type="submit" class="btn btn-sm btn-outline-danger" title="Desativar link">
+                                <i class="fas fa-ban"></i>
+                            </button>
+                        </form>
+                        {% endif %}
+                    </div>
+                </div>
+                {% if linha.link %}
+                <div class="small text-muted mt-2 text-break"><code>{{ linha.url }}</code></div>
+                {% endif %}
+            </div>
+            {% endfor %}
+        </div>
+    </div>
+
+    <p class="small text-muted mt-3 mb-0">
+        <i class="fas fa-info-circle me-1"></i>
+        O link usa o endereço por onde você está acessando o sistema agora. Para enviar a clientes,
+        acesse pelo endereço público (ou defina <code>CATALOGO_URL_BASE</code> no arquivo .env).
+    </p>
+</div>
+
+<script>
+    document.querySelectorAll('.btn-copiar').forEach(function (btn) {
+        btn.addEventListener('click', function () {
+            const original = btn.innerHTML;
+            const confirmar = () => {
+                btn.innerHTML = '<i class="fas fa-check me-1"></i>Copiado!';
+                setTimeout(() => { btn.innerHTML = original; }, 2000);
+            };
+            if (navigator.clipboard && window.isSecureContext) {
+                navigator.clipboard.writeText(btn.dataset.url).then(confirmar);
+            } else {
+                // http sem https (ex.: IP da rede local): clipboard API não existe
+                const campo = document.createElement('textarea');
+                campo.value = btn.dataset.url;
+                document.body.appendChild(campo);
+                campo.select();
+                document.execCommand('copy');
+                campo.remove();
+                confirmar();
+            }
+        });
+    });
+</script>
+{% endblock %}

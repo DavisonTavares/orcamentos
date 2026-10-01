@@ -1,0 +1,103 @@
+{% load l10n %}<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="robots" content="noindex, nofollow">
+    <meta name="theme-color" content="{{ cor }}">
+    <title>Catálogo - {{ empresa.nome }}</title>
+    <meta property="og:title" content="Catálogo - {{ empresa.nome }}">
+    <meta property="og:description" content="Brinquedos e serviços para a sua festa">
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        :root { --cor: {{ cor }}; }
+        body { font-family: 'Poppins', sans-serif; background: #F8FAFC; color: #1E293B; padding-bottom: 96px; }
+
+        .topo { background: var(--cor); color: #fff; text-align: center; padding: 24px 16px 56px; }
+        .topo img { max-height: 84px; max-width: 220px; }
+        .topo h1 { font-size: 1.35rem; font-weight: 700; margin: 12px 0 4px; }
+        .topo p { margin: 0; opacity: .9; font-size: .95rem; }
+
+        .conteudo { max-width: 1100px; margin: -36px auto 0; padding: 0 16px; }
+        .secao { margin-bottom: 28px; }
+        .secao h2 { font-size: 1.1rem; font-weight: 700; margin: 0 0 12px; display: flex; align-items: center; gap: 8px; }
+        .secao h2::before { content: ""; width: 6px; height: 20px; border-radius: 3px; background: var(--cor); }
+
+        .grade { display: grid; gap: 12px; grid-template-columns: repeat(2, minmax(0, 1fr)); }
+        @media (min-width: 768px) { .grade { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 16px; } }
+        @media (min-width: 1024px) { .grade { grid-template-columns: repeat(4, minmax(0, 1fr)); } }
+
+        .card-item { background: #fff; border-radius: 14px; overflow: hidden; box-shadow: 0 2px 12px rgba(15, 23, 42, .08); display: flex; flex-direction: column; }
+        .card-item .foto { aspect-ratio: 1 / 1; background: #EEF2F7; display: flex; align-items: center; justify-content: center; }
+        .card-item .foto img { width: 100%; height: 100%; object-fit: cover; }
+        .card-item .foto i { font-size: 2.4rem; color: #94A3B8; }
+        .card-item .info { padding: 10px 12px 12px; display: flex; flex-direction: column; flex: 1; }
+        .card-item .nome { font-weight: 600; font-size: .92rem; line-height: 1.25; margin-bottom: 4px; overflow-wrap: anywhere; }
+        .card-item .descricao { font-size: .78rem; color: #64748B; margin-bottom: 8px;
+            display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
+        .card-item .preco { margin-top: auto; font-weight: 700; font-size: 1.05rem; color: var(--cor); }
+        .card-item .pix { font-size: .75rem; color: #059669; font-weight: 600; }
+
+        .rodape { text-align: center; color: #64748B; font-size: .8rem; margin: 8px 0 24px; }
+
+        .btn-whatsapp { position: fixed; left: 16px; right: 16px; bottom: 16px; max-width: 480px; margin: 0 auto;
+            background: #25D366; color: #fff; border-radius: 999px; padding: 14px 20px; font-weight: 600;
+            text-align: center; text-decoration: none; box-shadow: 0 6px 20px rgba(0, 0, 0, .2); }
+        .btn-whatsapp:hover { color: #fff; background: #1EBE5A; }
+    </style>
+</head>
+<body>
+    <header class="topo">
+        {% if tem_logo %}
+        <img src="{% url 'catalogo:logo' token %}" alt="{{ empresa.nome }}">
+        {% endif %}
+        <h1>Catálogo {{ empresa.nome }}</h1>
+        <p>Diversão garantida para a sua festa 🎉</p>
+    </header>
+
+    <main class="conteudo">
+        {% for titulo, itens in secoes %}
+        <section class="secao">
+            <h2>{{ titulo }}</h2>
+            <div class="grade">
+                {% for item in itens %}
+                <article class="card-item">
+                    <div class="foto">
+                        {% if item.tem_foto %}
+                        <img src="{% url 'catalogo:foto' token item.id %}" alt="{{ item.nome }}" loading="lazy">
+                        {% else %}
+                        <i class="fas fa-gift" aria-hidden="true"></i>
+                        {% endif %}
+                    </div>
+                    <div class="info">
+                        <div class="nome">{{ item.nome }}</div>
+                        {% if item.descricao %}<div class="descricao">{{ item.descricao }}</div>{% endif %}
+                        <div class="preco">R$ {{ item.valor|floatformat:"0g" }}</div>
+                        {% if item.valor_pix %}
+                        <div class="pix"><i class="fas fa-bolt me-1"></i>R$ {{ item.valor_pix|floatformat:"0g" }} no PIX à vista</div>
+                        {% endif %}
+                    </div>
+                </article>
+                {% endfor %}
+            </div>
+        </section>
+        {% empty %}
+        <p class="text-center text-muted py-5">Catálogo em atualização. Fale com a gente pelo WhatsApp! 😊</p>
+        {% endfor %}
+
+        <p class="rodape">
+            Valores para locação, sujeitos à disponibilidade da data.<br>
+            {% if empresa.instagram %}<i class="fab fa-instagram me-1"></i>{{ empresa.instagram }}{% endif %}
+        </p>
+    </main>
+
+    {% if whatsapp %}
+    <a class="btn-whatsapp" target="_blank" rel="noopener"
+       href="https://wa.me/{{ whatsapp }}?text={{ 'Olá! Vi o catálogo e gostaria de fazer um orçamento 😊'|urlencode }}">
+        <i class="fab fa-whatsapp me-2"></i>Pedir orçamento pelo WhatsApp
+    </a>
+    {% endif %}
+</body>
+</html>

@@ -1,5 +1,6 @@
 {% extends "base.html" %}
 {% load static %}
+{% load l10n %}
 
 {% block title %}Novo Item - Mundo Kids{% endblock %}
 
@@ -162,7 +163,7 @@
 <div class="container py-4">
     <div class="row">
         <div class="col-12">
-            <div class="d-flex justify-content-between align-items-center mb-4">
+            <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-4">
                 <h1 class="h3 mb-0">
                     <i class="fas fa-cube me-2"></i>Novo Item
                 </h1>
@@ -178,7 +179,7 @@
                 </div>
 
                 <div class="form-body">
-                    <form method="post" id="itemForm">
+                    <form method="post" id="itemForm" enctype="multipart/form-data">
                         {% csrf_token %}
                         
                         {% if form.errors %}
@@ -241,7 +242,7 @@
                                     <label class="form-label">Investimento (R$) *</label>
                                     <input type="number" class="form-control" name="investimento" 
                                            step="0.01" min="0" placeholder="0.00" 
-                                           value="{{ form.investimento.value|default:'0.00' }}" required>
+                                           value="{{ form.investimento.value|default:'0.00'|unlocalize }}" required>
                                     {% if form.investimento.errors %}
                                     <div class="text-danger small mt-1">
                                         {{ form.investimento.errors.0 }}
@@ -252,7 +253,7 @@
                                     <label class="form-label">Custo Fixo (R$) *</label>
                                     <input type="number" class="form-control" name="custo_fixo" 
                                            step="0.01" min="0" placeholder="0.00" 
-                                           value="{{ form.custo_fixo.value|default:'0.00' }}" required>
+                                           value="{{ form.custo_fixo.value|default:'0.00'|unlocalize }}" required>
                                     {% if form.custo_fixo.errors %}
                                     <div class="text-danger small mt-1">
                                         {{ form.custo_fixo.errors.0 }}
@@ -264,7 +265,7 @@
                                     <label class="form-label">Percentual de Lucro (%) *</label>
                                     <input type="number" class="form-control" name="percentual_lucro" 
                                            step="0.01" min="0" max="100" placeholder="0" 
-                                           value="{{ form.percentual_lucro.value|default:'0' }}" required>
+                                           value="{{ form.percentual_lucro.value|default:'0'|unlocalize }}" required>
                                     {% if form.percentual_lucro.errors %}
                                     <div class="text-danger small mt-1">
                                         {{ form.percentual_lucro.errors.0 }}
@@ -281,7 +282,7 @@
                                     <label class="form-label">Valor Unitário (R$) *</label>
                                     <input type="number" class="form-control" name="valor_unitario" 
                                            step="0.01" min="0" placeholder="0.00" 
-                                           value="{{ form.valor_unitario.value|default:'' }}" required>
+                                           value="{{ form.valor_unitario.value|default:''|unlocalize }}" required>
                                     {% if form.valor_unitario.errors %}
                                     <div class="text-danger small mt-1">
                                         {{ form.valor_unitario.errors.0 }}
@@ -293,7 +294,7 @@
                                     <label class="form-label">Desconto Padrão (%)</label>
                                     <input type="number" class="form-control" name="desconto" 
                                            step="1" min="0" max="100" placeholder="0" 
-                                           value="{{ form.desconto.value|default:0 }}">
+                                           value="{{ form.desconto.value|default:'0'|unlocalize }}">
                                     {% if form.desconto.errors %}
                                     <div class="text-danger small mt-1">
                                         {{ form.desconto.errors.0 }}
@@ -314,6 +315,64 @@
                                     </div>
                                 </div>
                             </div>
+                        </div>
+
+                        <!-- Catálogo online -->
+                        <div class="form-section">
+                            <h4 class="section-title">Catálogo Online</h4>
+                            <div class="row align-items-center">
+                                <div class="col-md-6 mb-3">
+                                    <label class="form-label" for="imagem">Foto do item</label>
+                                    {% if item.imagem %}
+                                    <div class="mb-2">
+                                        <img src="{% url 'orcamentos:foto_item' item.id %}" alt="Foto atual" class="rounded border" style="max-height: 120px; max-width: 100%;">
+                                    </div>
+                                    <div class="form-check mb-2">
+                                        <input class="form-check-input" type="checkbox" name="imagem-clear" id="imagem-clear">
+                                        <label class="form-check-label small" for="imagem-clear">Remover foto atual</label>
+                                    </div>
+                                    {% endif %}
+                                    <input type="file" class="form-control" name="imagem" id="imagem" accept="image/*">
+                                    {% if form.imagem.errors %}
+                                    <div class="text-danger small mt-1">{{ form.imagem.errors.0 }}</div>
+                                    {% endif %}
+                                </div>
+                                <div class="col-md-6 mb-3">
+                                    <div class="form-check form-switch">
+                                        <input class="form-check-input" type="checkbox"
+                                               name="exibir_catalogo" id="exibir_catalogo"
+                                               {% if form.exibir_catalogo.value %}checked{% endif %}>
+                                        <label class="form-check-label" for="exibir_catalogo">
+                                            Mostrar no catálogo online
+                                        </label>
+                                    </div>
+                                    <div class="form-text">Desmarque para itens internos (ex.: gerador, copos personalizados).</div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Checklist de Conferência -->
+                        <div class="form-section">
+                            <h4 class="section-title">Checklist de Conferência</h4>
+                            <p class="text-muted small">
+                                Itens/acessórios que este brinquedo precisa levar (ex.: extensão elétrica,
+                                estacas, soprador, lona). Usados para montar a lista de conferência em PDF
+                                na hora de separar o material para o evento.
+                            </p>
+                            <div id="checklistContainer">
+                                {% for checklist_item in checklist_itens %}
+                                <div class="checklist-row d-flex gap-2 mb-2">
+                                    <input type="text" class="form-control" name="checklist_itens[]"
+                                           value="{{ checklist_item.descricao }}">
+                                    <button type="button" class="btn btn-outline-danger btn-remove-checklist" title="Remover">
+                                        <i class="fas fa-trash"></i>
+                                    </button>
+                                </div>
+                                {% endfor %}
+                            </div>
+                            <button type="button" class="btn btn-outline-primary btn-sm" id="addChecklistItem">
+                                <i class="fas fa-plus me-1"></i>Adicionar item ao checklist
+                            </button>
                         </div>
 
                         <!-- Preview do Item -->
@@ -473,6 +532,34 @@
         formValor.addEventListener('blur', function() {
             if (this.value) {
                 this.value = parseFloat(this.value).toFixed(2);
+            }
+        });
+
+        // Checklist de conferência: adicionar/remover linhas dinamicamente
+        const checklistContainer = document.getElementById('checklistContainer');
+        const addChecklistItemBtn = document.getElementById('addChecklistItem');
+
+        function criarLinhaChecklist() {
+            const row = document.createElement('div');
+            row.className = 'checklist-row d-flex gap-2 mb-2';
+            row.innerHTML = `
+                <input type="text" class="form-control" name="checklist_itens[]" placeholder="Ex: Extensão elétrica 10m">
+                <button type="button" class="btn btn-outline-danger btn-remove-checklist" title="Remover">
+                    <i class="fas fa-trash"></i>
+                </button>
+            `;
+            checklistContainer.appendChild(row);
+            row.querySelector('input').focus();
+        }
+
+        addChecklistItemBtn.addEventListener('click', criarLinhaChecklist);
+
+        // Delegação de evento: cobre tanto as linhas já existentes (edição)
+        // quanto as adicionadas dinamicamente
+        checklistContainer.addEventListener('click', function(e) {
+            const btn = e.target.closest('.btn-remove-checklist');
+            if (btn) {
+                btn.closest('.checklist-row').remove();
             }
         });
     });

@@ -27,6 +27,13 @@ ALLOWED_HOSTS = [
     '.vercel.app',
     'localhost',
     '127.0.0.1',
+    '192.168.2.10',
+    '192.168.2.8',
+    '192.168.2.9',
+    '192.168.2.6',
+    '3b5d0bbeeeeb.ngrok-free.app',
+    '192.168.3.9',
+    '192.168.18.28'
 ]
 
 # Application definition
@@ -41,11 +48,17 @@ INSTALLED_APPS = [
     "accounts",
     "orcamentos",
     'relatorios',
+    'dbbackup',
+    'whatsapp',
 ]
 
 MIDDLEWARE = [
     'django.middleware.security.SecurityMiddleware',
     'whitenoise.middleware.WhiteNoiseMiddleware',
+    # Comprime as páginas (o Django 5 já inclui a proteção contra BREACH)
+    'django.middleware.gzip.GZipMiddleware',
+    # Tira a indentação do HTML antes de comprimir (ver mundo_kids/middleware.py)
+    'mundo_kids.middleware.CompactarHTMLMiddleware',
     'django.contrib.sessions.middleware.SessionMiddleware',
     'django.middleware.common.CommonMiddleware',
     'django.middleware.csrf.CsrfViewMiddleware',
@@ -84,16 +97,19 @@ DATABASES = {
 
 # Se tiver variáveis de MySQL no .env, use-as
 if env('DB_ENGINE', default='') == 'django.db.backends.mysql':
-    DATABASES['default'] = {
-        'ENGINE': env('DB_ENGINE'),
-        'NAME': env('DB_NAME'),
-        'USER': env('DB_USER'),
-        'PASSWORD': env('DB_PASSWORD'),
-        'HOST': env('DB_HOST'),
-        'PORT': env('DB_PORT'),
-        'OPTIONS': {
-            'charset': 'utf8mb4',
+    DATABASES = {
+        'default': {
+            'ENGINE': env('DB_ENGINE'),
+            'NAME': env('DB_NAME'),
+            'USER': env('DB_USER'),
+            'PASSWORD': env('DB_PASSWORD'),
+            'HOST': env('DB_HOST'),
+            'PORT': env('DB_PORT', default='3306'),
         },
+        'sqlite_backup': {
+            'ENGINE': 'django.db.backends.sqlite3',
+            'NAME': BASE_DIR / 'db.sqlite3',
+        }
     }
 
 # Password validation
@@ -112,8 +128,12 @@ USE_TZ = True
 
 # Static files
 STATIC_URL = '/static/'
-STATIC_DIR = os.path.join(BASE_DIR, 'static')
-STATIC_ROOT = os.path.join(BASE_DIR, 'staticfiles')
+#STATIC_DIR = os.path.join(BASE_DIR, 'static')
+#STATIC_ROOT = os.path.join(BASE_DIR, 'staticfiles')
+
+# Endereço público usado nos links do catálogo online enviados aos clientes
+# (ex.: https://seu-dominio.com). Vazio = usa o endereço de onde o sistema é acessado.
+CATALOGO_URL_BASE = env('CATALOGO_URL_BASE', default='')
 
 MEDIA_URL = '/media/'
 MEDIA_ROOT = os.path.join(BASE_DIR, 'media')
@@ -128,3 +148,22 @@ AUTH_USER_MODEL = 'accounts.Usuario'
 LOGIN_REDIRECT_URL = '/orcamentos/'  
 LOGIN_URL = '/accounts/login/'       
 LOGOUT_REDIRECT_URL = '/accounts/login/'  
+
+# Application definition
+DBBACKUP_STORAGE = 'django.core.files.storage.FileSystemStorage'
+DBBACKUP_STORAGE_OPTIONS = {'location': os.path.join(BASE_DIR, 'backups')}
+
+# Forçar a extensão .sql no nome do arquivo
+DBBACKUP_FILENAME_TEMPLATE = 'backup-{datetime}.sql'
+DBBACKUP_DATE_FORMAT = '%Y-%m-%d-%H%M%S'
+
+DBBACKUP_CONNECTION = {
+    'default': {
+        'DUMP_SUFFIX': '.sql',
+    }
+}
+
+# configurações da api do whatsapp
+WHATSAPP_TOKEN = env('WHATSAPP_TOKEN', default=None)
+WHATSAPP_PHONE_ID = env('WHATSAPP_PHONE_ID', default=None)
+WHATSAPP_VERIFY_TOKEN = env('WHATSAPP_VERIFY_TOKEN', default='meu_token_verificacao')

@@ -13,7 +13,7 @@ class EmpresaForm(forms.ModelForm):
     
     class Meta:
         model = Empresa
-        fields = ['nome', 'cnpj', 'telefone', 'email', 'endereco', 'logo', 
+        fields = ['nome', 'cnpj', 'telefone', 'email', 'endereco', 'logo', 'assinatura',
                  'cor_principal', 'cor_secundaria', 'cor_acento', 'tema_escuro', 'cidade', 'instagram', 'whatsapp']
         widgets = {
             'nome': forms.TextInput(attrs={'class': 'form-control'}),
@@ -25,6 +25,7 @@ class EmpresaForm(forms.ModelForm):
             'email': forms.EmailInput(attrs={'class': 'form-control'}),
             'endereco': forms.Textarea(attrs={'class': 'form-control', 'rows': 3}),
             'logo': forms.FileInput(attrs={'class': 'form-control'}),
+            'assinatura': forms.FileInput(attrs={'class': 'form-control'}),
             'cor_principal': forms.TextInput(attrs={
                 'class': 'form-control', 
                 'type': 'color',
@@ -54,6 +55,19 @@ class EmpresaForm(forms.ModelForm):
             except (AttributeError, TypeError):
                 pass
         return logo
+
+    def clean_assinatura(self):
+        assinatura = self.cleaned_data.get('assinatura')
+        if assinatura:
+            try:
+                # Verificar se é uma imagem válida (foto/scan de assinatura
+                # pode ser maior que uma logo, então o limite é mais folgado)
+                w, h = get_image_dimensions(assinatura)
+                if w > 1500 or h > 1500:
+                    raise forms.ValidationError("A assinatura deve ter no máximo 1500x1500 pixels.")
+            except (AttributeError, TypeError):
+                pass
+        return assinatura
 
 class CustomPasswordChangeForm(PasswordChangeForm):
     def __init__(self, *args, **kwargs):

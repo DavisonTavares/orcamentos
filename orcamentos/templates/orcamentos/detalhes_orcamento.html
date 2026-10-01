@@ -76,6 +76,13 @@
         border: 1px solid #e2e8f0;
     }
 
+    /* Evita que descrições longas estourem a largura do card */
+    .item-card .item-info {
+        min-width: 0;
+        overflow-wrap: break-word;
+        word-break: break-word;
+    }
+
     .summary-item {
         display: flex;
         justify-content: space-between;
@@ -116,14 +123,31 @@
         font-weight: 600;
     }
 
-    .action-buttons {
-        position: sticky;
-        bottom: 20px;
-        background: white;
-        padding: 20px;
-        border-radius: 15px;
-        box-shadow: 0 -5px 20px rgba(0, 0, 0, 0.1);
-        margin-top: 2rem;
+    /* Barra de ações: mesmo cartão usado no resto da página, com todos os
+       botões no mesmo formato (raio, padding, altura) — só a cor muda
+       conforme o tipo de ação. */
+    .actions-bar .btn {
+        border-radius: 12px;
+        padding: 12px 24px;
+        font-weight: 600;
+        transition: all 0.3s;
+    }
+
+    .actions-bar .btn:hover {
+        transform: translateY(-2px);
+    }
+
+    @media (min-width: 768px) {
+        .actions-bar {
+            display: flex !important;
+            flex-wrap: wrap;
+            justify-content: center;
+        }
+
+        .actions-bar .btn,
+        .actions-bar form {
+            width: auto;
+        }
     }
 
     @media (max-width: 768px) {
@@ -227,12 +251,12 @@
                 <div class="content-body">
                     {% for item in itens_com_totais %}                 
                     <div class="item-card">
-                        <div class="d-flex justify-content-between align-items-center">
-                            <div>
+                        <div class="d-flex flex-wrap justify-content-between align-items-center gap-2">
+                            <div class="item-info">
                                 <h6 class="mb-1">{{ item.item.descricao }}</h6>
                                 <p class="mb-0 text-muted">{{ item.item.categoria }}</p>
                             </div>
-                            <div class="text-end">
+                            <div class="text-end flex-shrink-0">
                                 <div class="fw-bold">{{ item.quantidade }} x R$ {{ item.item.valor_unitario }}</div>
                                 <div class="text-success">Subtotal: R$ {{ item.subtotal }}</div>
                             </div>
@@ -315,11 +339,9 @@
                             <i class="fas fa-file-pdf me-2"></i>Gerar PDF
                         </a>
 
-                        {% if orcamento.png %}
-                        <a href="{{ orcamento.png.url }}" class="btn btn-outline-primary" target="_blank">
-                            <i class="fas fa-image me-2"></i>Ver Imagem
+                        <a href="{% url 'orcamentos:baixar_png' orcamento.id %}" class="btn btn-outline-primary">
+                            <i class="fas fa-image me-2"></i>Baixar Imagem (PNG)
                         </a>
-                        {% endif %}
                     </div>
                 </div>
             </div>
@@ -331,85 +353,129 @@
                 </div>
                 <div class="content-body">
                     <div class="d-grid gap-2">
-                        <button class="btn btn-outline-primary" onclick="enviarPorWhatsApp()">
+                        <a href="{% url 'orcamentos:enviar_notificacao_whatsapp' orcamento.id %}" class="btn btn-primary" target="_blank">
                             <i class="fab fa-whatsapp me-2"></i>Enviar por WhatsApp
-                        </button>
+                        </a>
                         <button class="btn btn-outline-primary" onclick="copiarLink()">
                             <i class="fas fa-link me-2"></i>Copiar Link
                         </button>
                         <a href="{% url 'orcamentos:editar_orcamento' orcamento.id %}" class="btn btn-outline-secondary">
                             <i class="fas fa-edit me-2"></i>Editar Orçamento
                         </a>
+                        <a href="{% url 'orcamentos:gerar_checklist_pdf' orcamento.id %}" class="btn btn-outline-primary">
+                            <i class="fas fa-clipboard-check me-2"></i>Checklist de Conferência (PDF)
+                        </a>
+                        {% if orcamento.valor_pago > 0 %}
+                        <a href="{% url 'orcamentos:gerar_recibo_pdf' orcamento.id %}" class="btn btn-outline-success">
+                            <i class="fas fa-receipt me-2"></i>Gerar Recibo (PDF)
+                        </a>
+                        {% endif %}
                     </div>
                 </div>
             </div>
         </div>
     </div>
 
-    <!-- Barra de Ações Fixa -->
-    <div class="action-buttons">
-        <div class="d-flex gap-2 justify-content-center">
-            <a href="{% url 'orcamentos:lista_orcamentos' %}" class="btn btn-outline-secondary">
-                <i class="fas fa-arrow-left me-2"></i>Voltar
-            </a>
-            {% if orcamento.status == 'pendente' %}
-            <form method="post" action="{% url 'orcamentos:alterar_status' orcamento.id %}">
-                {% csrf_token %}
-                <input type="hidden" name="status" value="confirmado">
-                <button type="submit" class="btn btn-success">
-                    <i class="fas fa-check me-2"></i>Confirmar
-                </button>
-            </form>
+    <!-- Barra de Ações -->
+    <div class="content-container">
+        <div class="content-header">
+            <h4 class="mb-0"><i class="fas fa-tasks me-2"></i> Ações</h4>
+        </div>
+        <div class="content-body">
+            <div class="d-grid gap-2 actions-bar">
+                <a href="{% url 'orcamentos:lista_orcamentos' %}" class="btn btn-outline-secondary">
+                    <i class="fas fa-arrow-left me-2"></i>Voltar
+                </a>
 
-            <!-- Formulário para Cancelar -->
-            <form method="post" action="{% url 'orcamentos:alterar_status' orcamento.id %}">
-                {% csrf_token %}
-                <input type="hidden" name="status" value="cancelado">
-                <button type="submit" class="btn btn-danger">
-                    <i class="fas fa-times me-2"></i>Cancelar
+                {% if orcamento.status != 'cancelado' and orcamento.saldo > 0 %}
+                <button type="button" class="btn btn-outline-success"
+                        data-bs-toggle="modal" data-bs-target="#modalPagamento"
+                        data-url="{% url 'orcamentos:registrar_pagamento' orcamento.id %}"
+                        data-orcamento="{{ orcamento.id }}" data-cliente="{{ orcamento.cliente.nome }}"
+                        data-total="{{ orcamento.total|stringformat:'.2f' }}" data-pago="{{ orcamento.valor_pago|stringformat:'.2f' }}">
+                    <i class="fas fa-hand-holding-usd me-2"></i>Registrar Pagamento
                 </button>
-            </form>
-            {% endif %}
-            {% if orcamento.status == 'confirmado' %}
-            <form method="post" action="{% url 'orcamentos:alterar_status' orcamento.id %}">
-                {% csrf_token %}
-                <input type="hidden" name="status" value="concluido">
-                <button type="submit" class="btn btn-primary">
-                    <i class="fas fa-check-double me-2"></i>Concluir
-                </button>
-            </form>
-            
-            <form method="post" action="{% url 'orcamentos:alterar_status' orcamento.id %}">
-                {% csrf_token %}
-                <input type="hidden" name="status" value="reagendar">
-                <button type="submit" class="btn btn-warning text-dark">
-                    <i class="fas fa-calendar-alt me-2"></i>Reagendar
-                </button>
-            </form>
-            {% endif %}
-            {% if orcamento.status == 'reagendar' %}
-            <form method="post" action="{% url 'orcamentos:alterar_status' orcamento.id %}">
-                {% csrf_token %}
-                <input type="hidden" name="status" value="confirmado">
-                <button type="submit" class="btn btn-success">
-                    <i class="fas fa-check me-2"></i>Confirmar
-                </button>
-            </form>
-            {% endif %}
+                {% endif %}
 
-            <a href="{% url 'orcamentos:novo_orcamento' %}" class="btn btn-primary">
-                <i class="fas fa-plus me-2"></i>Novo Orçamento
-            </a>
+                {% if orcamento.status == 'pendente' %}
+                <form method="post" action="{% url 'orcamentos:alterar_status' orcamento.id %}" class="d-grid">
+                    {% csrf_token %}
+                    <input type="hidden" name="status" value="confirmado">
+                    <button type="submit" class="btn btn-success">
+                        <i class="fas fa-check me-2"></i>Confirmar
+                    </button>
+                </form>
+
+                <form method="post" action="{% url 'orcamentos:alterar_status' orcamento.id %}" class="d-grid">
+                    {% csrf_token %}
+                    <input type="hidden" name="status" value="cancelado">
+                    <button type="submit" class="btn btn-danger">
+                        <i class="fas fa-times me-2"></i>Cancelar
+                    </button>
+                </form>
+                {% endif %}
+
+                {% if orcamento.status == 'confirmado' %}
+                <form method="post" action="{% url 'orcamentos:alterar_status' orcamento.id %}" class="d-grid">
+                    {% csrf_token %}
+                    <input type="hidden" name="status" value="concluido">
+                    <button type="submit" class="btn btn-primary">
+                        <i class="fas fa-check-double me-2"></i>Concluir
+                    </button>
+                </form>
+
+                <form method="post" action="{% url 'orcamentos:alterar_status' orcamento.id %}" class="d-grid">
+                    {% csrf_token %}
+                    <input type="hidden" name="status" value="reagendar">
+                    <button type="submit" class="btn btn-warning text-dark">
+                        <i class="fas fa-calendar-alt me-2"></i>Reagendar
+                    </button>
+                </form>
+                {% endif %}
+
+                {% if orcamento.status == 'reagendar' %}
+                <form method="post" action="{% url 'orcamentos:alterar_status' orcamento.id %}" class="d-grid">
+                    {% csrf_token %}
+                    <input type="hidden" name="status" value="confirmado">
+                    <button type="submit" class="btn btn-success">
+                        <i class="fas fa-check me-2"></i>Confirmar
+                    </button>
+                </form>
+                {% endif %}
+
+                {% if orcamento.status == 'confirmado' or orcamento.status == 'reagendar' %}
+                <form method="post" action="{% url 'orcamentos:alterar_status' orcamento.id %}" class="d-grid"
+                      onsubmit="return confirm('Cancelar este evento? Ele deixará de aparecer nos agendamentos.')">
+                    {% csrf_token %}
+                    <input type="hidden" name="status" value="cancelado">
+                    <button type="submit" class="btn btn-danger">
+                        <i class="fas fa-ban me-2"></i>Cancelar Evento
+                    </button>
+                </form>
+                {% endif %}
+
+                {% if orcamento.status == 'cancelado' %}
+                <form method="post" action="{% url 'orcamentos:alterar_status' orcamento.id %}" class="d-grid"
+                      onsubmit="return confirm('Reativar este orçamento como pendente?')">
+                    {% csrf_token %}
+                    <input type="hidden" name="status" value="pendente">
+                    <button type="submit" class="btn btn-outline-secondary">
+                        <i class="fas fa-undo me-2"></i>Reativar
+                    </button>
+                </form>
+                {% endif %}
+
+                <a href="{% url 'orcamentos:novo_orcamento' %}" class="btn btn-primary">
+                    <i class="fas fa-plus me-2"></i>Novo Orçamento
+                </a>
+            </div>
         </div>
     </div>
 </div>
 
 <script>
     function enviarPorWhatsApp() {
-        const telefone = '{{ orcamento.cliente.telefone|cut:" "|cut:"("|cut:")"|cut:"-" }}';
-        const mensagem = `Olá {{ orcamento.cliente.nome }}! Segue o orçamento #{{ orcamento.id }} no valor de R$ {{ total }}.`;
-        const url = `https://wa.me/55${telefone}?text=${encodeURIComponent(mensagem)}`;
-        window.open(url, '_blank');
+        enviar_notificacao_whatsapp(orcamento);
     }
 
     function copiarLink() {
@@ -419,4 +485,6 @@
         });
     }
 </script>
+
+{% include "orcamentos/_modal_pagamento.html" %}
 {% endblock %}

@@ -1,0 +1,176 @@
+{% extends "base.html" %}
+
+{% block title %}Resumo de Festas - Mundo Kids{% endblock %}
+
+{% block extra_css %}
+<style>
+    .resumo-card {
+        background: white;
+        border-radius: 16px;
+        padding: 20px;
+        box-shadow: 0 4px 20px rgba(0, 0, 0, 0.08);
+        margin-bottom: 24px;
+    }
+
+    .dia-header {
+        background: var(--bs-primary);
+        color: white;
+        border-radius: 8px;
+        padding: 6px 12px;
+        font-weight: 600;
+        margin: 16px 0 8px;
+    }
+
+    .dia-header:first-child {
+        margin-top: 0;
+    }
+
+    .festa-linha {
+        display: grid;
+        grid-template-columns: 60px 1fr 1.3fr;
+        gap: 12px;
+        padding: 8px 12px;
+        border-bottom: 1px solid #E2E8F0;
+    }
+
+    .festa-hora {
+        font-weight: 700;
+    }
+
+    .festa-itens {
+        list-style: none;
+        padding: 0;
+        margin: 0;
+    }
+
+    @media (max-width: 576px) {
+        .festa-linha {
+            grid-template-columns: 50px 1fr;
+        }
+
+        .festa-itens {
+            grid-column: 2;
+        }
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="container py-4">
+    <div class="d-flex flex-wrap justify-content-between align-items-center gap-3 mb-4">
+        <div>
+            <h1 class="h2 mb-1">
+                <i class="fas fa-file-pdf me-2"></i>Resumo de Festas
+            </h1>
+            <p class="text-muted mb-0">PDF simplificado com as festas, os brinquedos e as quantidades de cada dia</p>
+        </div>
+        <a href="{% url 'orcamentos:agendamentos' %}" class="btn btn-outline-secondary">
+            <i class="fas fa-arrow-left me-2"></i>Voltar
+        </a>
+    </div>
+
+    <!-- Filtros -->
+    <div class="resumo-card">
+        <form method="get" class="row g-3 align-items-end">
+            <div class="col-6 col-md-3">
+                <label for="data_inicio" class="form-label">De</label>
+                <input type="date" id="data_inicio" name="data_inicio" value="{{ data_inicio }}" class="form-control">
+            </div>
+            <div class="col-6 col-md-3">
+                <label for="data_fim" class="form-label">Até</label>
+                <input type="date" id="data_fim" name="data_fim" value="{{ data_fim }}" class="form-control">
+            </div>
+            <div class="col-12 col-md-3">
+                <div class="form-check">
+                    <input class="form-check-input" type="checkbox" id="brinquedos" name="brinquedos" value="1" {% if somente_brinquedos %}checked{% endif %}>
+                    <label class="form-check-label" for="brinquedos">Somente brinquedos e máquinas</label>
+                </div>
+                <div class="form-check">
+                    <input class="form-check-input" type="checkbox" id="concluidos" name="concluidos" value="1" {% if incluir_concluidos %}checked{% endif %}>
+                    <label class="form-check-label" for="concluidos">Incluir concluídos</label>
+                </div>
+                <div class="form-check">
+                    <input class="form-check-input" type="checkbox" id="monitores" name="monitores" value="1" {% if para_monitores %}checked{% endif %}>
+                    <label class="form-check-label" for="monitores" title="Escala para enviar aos monitores: só a quantidade de monitores por dia e o horário das festas, sem dados do cliente nem brinquedos. Deixa de fora os eventos sem monitoria.">
+                        Versão para monitores
+                    </label>
+                </div>
+            </div>
+            <div class="col-12 col-md-3 d-grid gap-2">
+                <button type="submit" class="btn btn-outline-primary">
+                    <i class="fas fa-filter me-2"></i>Filtrar
+                </button>
+                <a href="?{% if query_pdf %}{{ query_pdf }}&{% endif %}formato=pdf" class="btn btn-danger">
+                    <i class="fas fa-file-pdf me-2"></i>Baixar PDF
+                </a>
+            </div>
+        </form>
+    </div>
+
+    <!-- Prévia -->
+    <div class="resumo-card">
+        <div class="d-flex justify-content-between align-items-center mb-3">
+            <h5 class="mb-0">{% if para_monitores %}Escala de monitores{% else %}Prévia{% endif %} · {{ periodo }}</h5>
+            <span class="badge bg-primary">{{ festas|length }} festa{{ festas|length|pluralize }}</span>
+        </div>
+
+        {% if para_monitores %}
+        {% for dia in dias_monitores %}
+            <div class="dia-header d-flex justify-content-between">
+                <span>{{ dia.data|date:"d/m/Y - l" }}</span>
+                <span>{{ dia.total }} monitor{{ dia.total|pluralize:"es" }}</span>
+            </div>
+            {% for festa in dia.festas %}
+            <div class="d-flex justify-content-between px-3 py-1 border-bottom">
+                <span>Festa das {{ festa.hora }}{% if festa.hora_fim %} às {{ festa.hora_fim }}{% endif %}</span>
+                <strong>{{ festa.monitores }} monitor{{ festa.monitores|pluralize:"es" }}</strong>
+            </div>
+            {% endfor %}
+        {% empty %}
+            <p class="text-muted mb-0">Nenhuma festa com monitoria no período selecionado.</p>
+        {% endfor %}
+        {% else %}
+        {% for festa in festas %}
+            {% ifchanged festa.data %}
+            <div class="dia-header">{{ festa.data|date:"d/m/Y - l" }}</div>
+            {% endifchanged %}
+            <div class="festa-linha">
+                <div class="festa-hora">{{ festa.hora }}</div>
+                <div>
+                    <a href="{% url 'orcamentos:detalhes_orcamento' festa.id %}" class="fw-semibold text-decoration-none">{{ festa.tipo_evento }}</a>
+                    <div class="small text-muted">{{ festa.cliente }}</div>
+                </div>
+                <ul class="festa-itens">
+                    {% for nome, qtd in festa.itens %}
+                    <li><strong>{{ qtd }}x</strong> {{ nome }}</li>
+                    {% empty %}
+                    <li class="text-muted small">(sem itens)</li>
+                    {% endfor %}
+                </ul>
+            </div>
+        {% empty %}
+            <p class="text-muted mb-0">Nenhuma festa confirmada para o período selecionado.</p>
+        {% endfor %}
+        {% endif %}
+    </div>
+
+    {% if totais and not para_monitores %}
+    <div class="resumo-card">
+        <div class="d-flex justify-content-between align-items-center mb-3">
+            <h5 class="mb-0">Total de itens no período</h5>
+            <span class="badge bg-secondary">{{ total_unidades }} unidade{{ total_unidades|pluralize }}</span>
+        </div>
+        <table class="table table-sm mb-0">
+            <tbody>
+                {% for nome, qtd in totais %}
+                <tr>
+                    <td>{{ nome }}</td>
+                    <td class="text-end fw-bold">{{ qtd }}</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    {% endif %}
+</div>
+{% endblock %}

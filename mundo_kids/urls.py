@@ -9,6 +9,8 @@ urlpatterns = [
     path("orcamentos/", include("orcamentos.urls")),
     path('accounts/', include('accounts.urls')),
     path('relatorios/', include('relatorios.urls')),
+    path("whatsapp/", include("whatsapp.urls")),
+    path("catalogo/", include("orcamentos.urls_catalogo")),
 ]
 
 if settings.DEBUG:

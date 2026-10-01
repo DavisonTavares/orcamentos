@@ -94,6 +94,13 @@
         transition: all 0.3s;
     }
 
+    /* Evita que descrições longas estourem a largura do card */
+    .item-card .item-info {
+        min-width: 0;
+        overflow-wrap: break-word;
+        word-break: break-word;
+    }
+
     .item-card:hover {
         border-color: var(--primary);
         box-shadow: 0 5px 15px rgba(36, 99, 235, 0.1);
@@ -182,6 +189,17 @@
         padding-left: 45px;
     }
 
+    .search-box-itens {
+        width: 250px;
+        max-width: 100%;
+    }
+
+    @media (max-width: 576px) {
+        .search-box-itens {
+            width: 100%;
+        }
+    }
+
     .toast-container {
         position: fixed;
         bottom: 20px;
@@ -249,9 +267,9 @@
 
                     <!-- Seção Itens -->
                     <div class="form-section">
-                        <div class="d-flex justify-content-between align-items-center mb-3">
+                        <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-3">
                             <h4 class="section-title mb-0">Itens do Orçamento</h4>
-                            <div class="search-box" style="width: 250px;">
+                            <div class="search-box search-box-itens">
                                 <i class="fas fa-search"></i>
                                 <input type="text" class="form-control" id="buscaItens"
                                     placeholder="Buscar brinquedos...">
@@ -271,11 +289,17 @@
                         <div class="row">
                             <div class="col-md-6 mb-4">
                                 <h4 class="section-title">Desconto</h4>
-                                <div class="d-flex align-items-center">
-                                    <input type="number" class="form-control me-2" id="descontoInput" 
-                                        placeholder="0" min="0" max="100" style="width: 100px;"
+                                <div class="d-flex align-items-center flex-wrap gap-2">
+                                    <div class="btn-group btn-group-sm" role="group" aria-label="Tipo de desconto">
+                                        <input type="radio" class="btn-check" name="descontoTipo" id="descontoTipoPercentual" autocomplete="off" checked>
+                                        <label class="btn btn-outline-primary" for="descontoTipoPercentual">%</label>
+
+                                        <input type="radio" class="btn-check" name="descontoTipo" id="descontoTipoValor" autocomplete="off">
+                                        <label class="btn btn-outline-primary" for="descontoTipoValor">R$</label>
+                                    </div>
+                                    <input type="number" class="form-control" id="descontoInput"
+                                        placeholder="0" min="0" max="100" step="1" style="width: 120px;"
                                         value="{{ orcamento.desconto_geral|stringformat:".2f"}}">
-                                    <span class="fw-medium">% de desconto</span>
                                 </div>
                                 <div class="mt-2">
                                     <span class="discount-badge">
@@ -327,9 +351,14 @@
                                     <option value="Corporativo" {% if orcamento.tipo_evento == "Corporativo" %}selected{% endif %}>Corporativo</option>
                                     <option value="Evento Público (com estimativa de público)" {% if orcamento.tipo_evento == "Evento Público (com estimativa de público)" %}selected{% endif %}>Evento Público (com estimativa de público)</option>
                                     <option value="Evento Público (sem estimativa de público)" {% if orcamento.tipo_evento == "Evento Público (sem estimativa de público)" %}selected{% endif %}>Evento Público (sem estimativa de público)</option>
+                                    <option value="Evento Sem Monitoria" {% if orcamento.tipo_evento == "Evento Sem Monitoria" %}selected{% endif %}>Evento Sem Monitoria</option>
+                                    <option value="Frente de Loja" {% if orcamento.tipo_evento == "Frente de Loja" %}selected{% endif %}>Frente de Loja</option>
                                     <option value="Outro" {% if orcamento.tipo_evento == "Outro" %}selected{% endif %}>Outro</option>
                                 </select>
                                 <div class="form-text">Selecione o tipo de evento</div>
+                                <div id="avisoSemMonitoria" class="small text-danger mt-1" style="display: none;">
+                                    <i class="fas fa-triangle-exclamation me-1"></i>Evento sem monitoria: a responsabilidade pelos brinquedos durante o evento será do contratante. A observação sobre isso foi adicionada automaticamente.
+                                </div>
                             </div>
                         </div>
                         <div class="col-md-12 mb-3">
@@ -379,13 +408,15 @@
                     <!-- Itens do resumo serão adicionados dinamicamente -->
                 </div>
 
+                <div id="avisoEventoPublico" class="small text-warning mb-2" style="display: none;"></div>
+
                 <div class="summary-item">
                     <span>Subtotal</span>
                     <span class="fw-medium" id="subtotal">R$ 0,00</span>
                 </div>
 
                 <div class="summary-item">
-                    <span>Desconto (<span id="percentualDesconto">0</span>%)</span>
+                    <span id="descontoLabel">Desconto (0%)</span>
                     <span class="fw-medium text-success" id="valorDesconto">- R$ 0,00</span>
                 </div>
 
@@ -406,7 +437,7 @@
 
                 <div class="mt-4">
                     <button type="button" class="btn btn-outline-primary w-100 mb-3" id="visualizarPdfBtn">
-                        <i class="fas fa-file-pdf me-2"></i>Pré-visualizar PDF
+                        <i class="fas fa-file-pdf me-2"></i>Gerar Catálogo em PDF
                     </button>
 
                     <button type="button" class="btn btn-primary w-100" id="enviarClienteBtn">
@@ -437,6 +468,7 @@
     const state = {
         itensSelecionados: [],
         desconto: {% if orcamento.desconto_geral %}{{ orcamento.desconto_geral|stringformat:"f"|cut:"," }}{% else %}0{% endif %},
+        descontoTipo: 'percentual', // 'percentual' ou 'valor' (R$)
         cliente: {% if orcamento.cliente %}{
             id: {{ orcamento.cliente.id }},
             nome: "{{ orcamento.cliente.nome|escapejs }}",
@@ -499,25 +531,40 @@
         itensFiltrados.forEach(item => {
             const itemSelecionado = state.itensSelecionados.find(i => i.id === item.id);
             const quantidade = itemSelecionado ? itemSelecionado.quantidade : 0;
+            const descontoAtivo = itemSelecionado ? itemSelecionado.descontoAtivo !== false : true;
+
+            // Só mostra a caixinha de desconto quando o item tem desconto
+            // padrão cadastrado E já foi adicionado ao orçamento.
+            const checkboxDesconto = (item.desconto && quantidade > 0) ? `
+                <div class="form-check mt-2">
+                    <input class="form-check-input" type="checkbox" id="descontoAtivo-${item.id}"
+                        ${descontoAtivo ? 'checked' : ''}
+                        onchange="alterarDescontoAtivo(${item.id}, this.checked)">
+                    <label class="form-check-label small" for="descontoAtivo-${item.id}">
+                        Aplicar desconto padrão de ${item.desconto}%
+                    </label>
+                </div>
+            ` : '';
 
             const itemHTML = `
                 <div class="item-card" data-item-id="${item.id}">
-                    <div class="d-flex justify-content-between align-items-center">
-                        <div>
+                    <div class="d-flex flex-wrap justify-content-between align-items-center gap-2">
+                        <div class="flex-grow-1 item-info">
                             <h6 class="mb-1">${item.nome}</h6>
                             <p class="mb-0 text-muted">${item.descricao}</p>
                             <div class="mt-2">
                                 <span class="item-badge ${item.disponivel ? 'bg-primary' : 'bg-secondary'}">
                                     ${item.disponivel ? 'Disponível' : 'Indisponível'}
                                 </span>
-                                <span class="ms-2 fw-bold text-primary">${formatarMoeda(item.preco)}</span>
+                                <span class="ms-2 fw-bold text-primary">${(item.desconto && descontoAtivo) ? `<del>${formatarMoeda(item.preco)}</del> ` : ''}${formatarMoeda(item.preco * (1 - ((descontoAtivo ? item.desconto : 0) || 0) / 100))}</span>
                             </div>
+                            ${checkboxDesconto}
                         </div>
-                        <div class="d-flex align-items-center">
+                        <div class="d-flex align-items-center flex-shrink-0">
                             <button class="btn btn-sm btn-outline-secondary" onclick="alterarQuantidade(${item.id}, -1)" ${quantidade === 0 ? 'disabled' : ''}>
                                 <i class="fas fa-minus"></i>
                             </button>
-                            <input type="number" class="quantity-input mx-2" value="${quantidade}" min="0" 
+                            <input type="number" class="quantity-input mx-2" value="${quantidade}" min="0"
                                 onchange="alterarQuantidade(${item.id}, 0, this.value)" ${!item.disponivel ? 'disabled' : ''}>
                             <button class="btn btn-sm btn-outline-primary" onclick="alterarQuantidade(${item.id}, 1)" ${!item.disponivel ? 'disabled' : ''}>
                                 <i class="fas fa-plus"></i>
@@ -553,6 +600,9 @@
                     id: itemId,
                     nome: item.nome,
                     preco: item.preco,
+                    categoria: item.categoria,
+                    desconto: item.desconto || 0,
+                    descontoAtivo: true,
                     quantidade: novaQuantidade
                 });
             }
@@ -560,8 +610,105 @@
             state.itensSelecionados.splice(itemIndex, 1);
         }
 
+        // Selecionar um item recria a lista inteira (renderizarItens), o que
+        // pode fazer a página "pular" pro topo (o navegador perde a
+        // referência do elemento focado/clicado). Guardamos a posição de
+        // rolagem antes e restauramos depois que o DOM terminar de mudar.
+        const scrollAtual = window.scrollY;
         renderizarItens();
         atualizarResumo();
+        requestAnimationFrame(() => window.scrollTo(0, scrollAtual));
+    }
+
+    // Ativar/desativar o desconto padrão do item só para este orçamento
+    function alterarDescontoAtivo(itemId, ativo) {
+        const item = state.itensSelecionados.find(i => i.id === itemId);
+        if (!item) return;
+        item.descontoAtivo = ativo;
+
+        const scrollAtual = window.scrollY;
+        renderizarItens();
+        atualizarResumo();
+        requestAnimationFrame(() => window.scrollTo(0, scrollAtual));
+    }
+
+    // Eventos públicos têm custo/risco operacional maior, então o valor de
+    // cada item recebe um acréscimo automático — 15% quando há estimativa de
+    // público, 20% quando não há (menos previsível). Precisa ser o mesmo
+    // critério usado no backend (views.py) na hora de salvar o orçamento.
+    const AJUSTE_EVENTO_PUBLICO = {
+        'Evento Público (com estimativa de público)': 1.15,
+        'Evento Público (sem estimativa de público)': 1.20
+    };
+
+    function obterFatorEventoPublico() {
+        const tipoEventoEl = document.getElementById('tipoEventoSelect');
+        const tipoEvento = tipoEventoEl ? tipoEventoEl.value : '';
+        return AJUSTE_EVENTO_PUBLICO[tipoEvento] || 1;
+    }
+
+    // Em eventos sem monitoria da empresa, o zelo pelos brinquedos e por
+    // eventuais danos à estrutura do local passa a ser responsabilidade do
+    // contratante — a observação abaixo é adicionada automaticamente ao
+    // orçamento sempre que esse tipo de evento é selecionado.
+    const TEXTO_SEM_MONITORIA = "AVISO – EVENTO SEM MONITORIA: por se tratar de locação sem o acompanhamento de monitor(es) da CONTRATADA durante o evento, a guarda, o zelo e a correta utilização dos brinquedos locados são de inteira responsabilidade do CONTRATANTE durante todo o período de uso. Eventuais danos, avarias, extravios ou mau uso dos equipamentos, bem como danos causados à estrutura do local do evento decorrentes da utilização dos brinquedos, serão de responsabilidade exclusiva do CONTRATANTE, que se compromete a arcar com os custos de reparo ou reposição, quando necessário.";
+
+    function atualizarAvisoSemMonitoria() {
+        const tipoEvento = document.getElementById('tipoEventoSelect').value;
+        const observacoesEl = document.getElementById('observacoes');
+        const avisoSemMonitoria = document.getElementById('avisoSemMonitoria');
+        const jaTemTexto = observacoesEl.value.includes(TEXTO_SEM_MONITORIA);
+
+        if (tipoEvento === 'Evento Sem Monitoria') {
+            avisoSemMonitoria.style.display = 'block';
+            if (!jaTemTexto) {
+                observacoesEl.value = observacoesEl.value.trim()
+                    ? `${observacoesEl.value.trim()}\n\n${TEXTO_SEM_MONITORIA}`
+                    : TEXTO_SEM_MONITORIA;
+            }
+        } else {
+            avisoSemMonitoria.style.display = 'none';
+            if (jaTemTexto) {
+                observacoesEl.value = observacoesEl.value.replace(TEXTO_SEM_MONITORIA, '').trim();
+            }
+        }
+    }
+
+    // Em "Frente de Loja", as máquinas de buffet têm desgaste/operação
+    // maior, então recebem um acréscimo próprio de 35% (só nelas, não no
+    // resto do orçamento), arredondado pro inteiro mais próximo. Precisa
+    // ser o mesmo critério usado no backend (views.py) na hora de salvar.
+    const AJUSTE_BUFFET_FRENTE_DE_LOJA = 1.35;
+
+    function valorUnitarioComAjuste(item) {
+        const tipoEvento = document.getElementById('tipoEventoSelect').value;
+        let valor = parseFloat(item.preco) * obterFatorEventoPublico();
+        if (tipoEvento === 'Frente de Loja' && item.categoria === 'buffet') {
+            valor = Math.round(valor * AJUSTE_BUFFET_FRENTE_DE_LOJA);
+        }
+        return valor;
+    }
+
+    // Subtotal já com o acréscimo de evento público, o acréscimo de buffet
+    // em Frente de Loja e o desconto de cada item (quando ativo) aplicados —
+    // usado tanto no resumo quanto na hora de converter o desconto geral em
+    // R$ para percentual no envio.
+    function calcularSubtotalAtual() {
+        return state.itensSelecionados.reduce((total, item) => {
+            const valorItem = valorUnitarioComAjuste(item) * parseInt(item.quantidade);
+            const descontoPct = item.descontoAtivo === false ? 0 : (parseFloat(item.desconto) || 0);
+            const descontoItem = valorItem * (descontoPct / 100);
+            return total + (valorItem - descontoItem);
+        }, 0);
+    }
+
+    // Valor do desconto geral em R$, considerando se foi digitado como
+    // percentual ou como valor fixo (nunca deixa passar do subtotal).
+    function calcularValorDescontoGeral(subtotal) {
+        if (state.descontoTipo === 'valor') {
+            return Math.min(parseFloat(state.desconto) || 0, subtotal);
+        }
+        return subtotal * ((parseFloat(state.desconto) || 0) / 100);
     }
 
     // Atualizar resumo do orçamento
@@ -569,33 +716,51 @@
         const itensResumo = document.getElementById('itensResumo');
         const subtotalElement = document.getElementById('subtotal');
         const valorAdicionalElement = document.getElementById('valorAdicional');
-        const percentualDescontoElement = document.getElementById('percentualDesconto');
+        const descontoLabelElement = document.getElementById('descontoLabel');
         const valorDescontoElement = document.getElementById('valorDesconto');
         const totalElement = document.getElementById('total');
         const valorPagoElement = document.getElementById('valorPago');
         const valorPagoInput = parseFloat(document.getElementById('valorPagoInput').value) || 0;
         const custoOperacionalInput = parseFloat(document.getElementById('custoOperacionalInput').value) || 0;
         const quantidadeItens = state.itensSelecionados.reduce((sum, item) => sum + item.quantidade, 0);
+        const fatorEventoPublico = obterFatorEventoPublico();
 
-        // Calcular subtotal
-        const subtotal = state.itensSelecionados.reduce((total, item) => {
-            return total + (parseFloat(item.preco) * parseInt(item.quantidade));
-        }, 0);
+        const tipoEventoAtual = document.getElementById('tipoEventoSelect').value;
+        const temItemBuffet = state.itensSelecionados.some(item => item.categoria === 'buffet');
+
+        const avisoEventoPublico = document.getElementById('avisoEventoPublico');
+        if (fatorEventoPublico > 1) {
+            avisoEventoPublico.style.display = 'block';
+            avisoEventoPublico.innerHTML = `<i class="fas fa-triangle-exclamation me-1"></i>Acréscimo de ${Math.round((fatorEventoPublico - 1) * 100)}% aplicado (evento público)`;
+        } else if (tipoEventoAtual === 'Frente de Loja' && temItemBuffet) {
+            avisoEventoPublico.style.display = 'block';
+            avisoEventoPublico.innerHTML = `<i class="fas fa-triangle-exclamation me-1"></i>Acréscimo de 35% aplicado nas máquinas de buffet (Frente de Loja)`;
+        } else {
+            avisoEventoPublico.style.display = 'none';
+        }
+
+        // Calcular subtotal (já com o acréscimo de evento público e o desconto de cada item, se ativo)
+        const subtotal = calcularSubtotalAtual();
 
         // Calcular desconto e total
-        const valorDesconto = subtotal * (parseFloat(state.desconto) / 100);
+        const valorDesconto = calcularValorDescontoGeral(subtotal);
         const valorAdicional = parseFloat(document.getElementById('valorAdicionalInput').value) || 0;
-        
+
         // Garantir que o total não seja negativo
-        const total = Math.max(0, subtotal - valorDesconto + valorAdicional - valorPagoInput);
+        // Total do orçamento arredondado para reais inteiros (igual ao sistema/PDF)
+        const total = Math.max(0, Math.round(subtotal - valorDesconto + valorAdicional) - valorPagoInput);
 
         // Atualizar itens no resumo
         itensResumo.innerHTML = '';
         state.itensSelecionados.forEach(item => {
+            const valorItem = valorUnitarioComAjuste(item) * item.quantidade;
+            const descontoPct = item.descontoAtivo === false ? 0 : (parseFloat(item.desconto) || 0);
+            const descontoItem = valorItem * (descontoPct / 100);
+            const rotuloDesconto = descontoPct ? ` (-${descontoPct}%)` : '';
             const itemHTML = `
                 <div class="summary-item">
-                    <span>${item.nome} (${item.quantidade}x)</span>
-                    <span class="fw-medium">${formatarMoeda(item.preco * item.quantidade)}</span>
+                    <span>${item.nome} (${item.quantidade}x)${rotuloDesconto}</span>
+                    <span class="fw-medium">${formatarMoeda(valorItem - descontoItem)}</span>
                 </div>
             `;
             itensResumo.insertAdjacentHTML('beforeend', itemHTML);
@@ -609,7 +774,9 @@
 
         // Atualizar valores
         subtotalElement.textContent = formatarMoeda(subtotal);
-        percentualDescontoElement.textContent = state.desconto;
+        descontoLabelElement.textContent = state.descontoTipo === 'valor'
+            ? `Desconto (${formatarMoeda(parseFloat(state.desconto) || 0)})`
+            : `Desconto (${state.desconto || 0}%)`;
         valorAdicionalElement.textContent = formatarMoeda(valorAdicional);
         valorDescontoElement.textContent = `- ${formatarMoeda(valorDesconto)}`;
         valorPagoElement.textContent = `- ${formatarMoeda(valorPagoInput)}`;
@@ -668,7 +835,17 @@
 
         // Preparar dados para envio
         const formData = new FormData();
-        formData.append('desconto', state.desconto);
+        // O backend só entende desconto_geral em percentual — se o usuário
+        // escolheu digitar em R$, convertemos para o percentual equivalente
+        // do subtotal atual antes de enviar.
+        let descontoPercentualEnvio = parseFloat(state.desconto) || 0;
+        if (state.descontoTipo === 'valor') {
+            const subtotalAtual = calcularSubtotalAtual();
+            descontoPercentualEnvio = subtotalAtual > 0
+                ? Math.min(descontoPercentualEnvio / subtotalAtual * 100, 100)
+                : 0;
+        }
+        formData.append('desconto', descontoPercentualEnvio);
         formData.append('observacoes', document.getElementById('observacoes').value);
         formData.append('data_evento', dataEvento);
         formData.append('hora_evento', horaEvento);
@@ -682,6 +859,7 @@
         // Adicionar itens no formato que sua view espera: "item_X" onde X é o ID
         state.itensSelecionados.forEach((item) => {
             formData.append(`item_${item.id}`, item.quantidade);
+            formData.append(`desconto_ativo_${item.id}`, item.descontoAtivo === false ? '0' : '1');
         });
 
         // Enviar via AJAX - URL CORRIGIDA
@@ -720,17 +898,20 @@
     document.addEventListener('DOMContentLoaded', function () {
         // Inicializar itens selecionados de forma robusta
         if (itensSelecionadosInicial && typeof itensSelecionadosInicial === 'object') {
-            for (const [itemId, quantidade] of Object.entries(itensSelecionadosInicial)) {
+            for (const [itemId, dadosItem] of Object.entries(itensSelecionadosInicial)) {
                 try {
                     const itemIdNum = parseInt(itemId);
-                    const quantidadeNum = parseInt(quantidade);
+                    const quantidadeNum = parseInt(dadosItem.quantidade);
                     const item = itensDisponiveis.find(i => i.id === itemIdNum);
-                    
+
                     if (item && quantidadeNum > 0) {
                         state.itensSelecionados.push({
                             id: itemIdNum,
                             nome: item.nome,
                             preco: parseFloat(item.preco),
+                            categoria: item.categoria,
+                            desconto: parseFloat(item.desconto) || 0,
+                            descontoAtivo: dadosItem.desconto_ativo !== false,
                             quantidade: quantidadeNum
                         });
                     }
@@ -746,14 +927,49 @@
         // Busca de itens
         document.getElementById('buscaItens').addEventListener('input', renderizarItens);
 
+        // Tipo do evento (evento público altera automaticamente o valor dos itens)
+        document.getElementById('tipoEventoSelect').addEventListener('change', function () {
+            atualizarAvisoSemMonitoria();
+            atualizarResumo();
+        });
+        atualizarAvisoSemMonitoria();
+
         // Campo de desconto
         document.getElementById('descontoInput').addEventListener('input', function () {
             state.desconto = parseFloat(this.value) || 0;
-            if (state.desconto > 100) {
+            if (state.descontoTipo === 'percentual' && state.desconto > 100) {
                 state.desconto = 100;
                 this.value = 100;
             }
+            if (state.desconto < 0) {
+                state.desconto = 0;
+                this.value = 0;
+            }
             atualizarResumo();
+        });
+
+        // Tipo de desconto (% ou R$)
+        function alternarTipoDesconto(tipo) {
+            state.descontoTipo = tipo;
+            state.desconto = 0;
+            const descontoInput = document.getElementById('descontoInput');
+            descontoInput.value = '';
+            if (tipo === 'valor') {
+                descontoInput.removeAttribute('max');
+                descontoInput.step = '0.01';
+                descontoInput.placeholder = '0,00';
+            } else {
+                descontoInput.setAttribute('max', '100');
+                descontoInput.step = '1';
+                descontoInput.placeholder = '0';
+            }
+            atualizarResumo();
+        }
+        document.getElementById('descontoTipoPercentual').addEventListener('change', function () {
+            if (this.checked) alternarTipoDesconto('percentual');
+        });
+        document.getElementById('descontoTipoValor').addEventListener('change', function () {
+            if (this.checked) alternarTipoDesconto('valor');
         });
 
         // Campo de valor adicional
@@ -774,14 +990,55 @@
         // Botão de salvar
         document.getElementById('salvarBtn').addEventListener('click', salvarOrcamento);
 
-        // Botão de visualizar PDF
+        // Botão de gerar catálogo em PDF
         document.getElementById('visualizarPdfBtn').addEventListener('click', function () {
             if (state.itensSelecionados.length === 0) {
-                mostrarToast('Adicione itens ao orçamento antes de visualizar o PDF', 'warning');
+                mostrarToast('Adicione itens ao orçamento antes de gerar o catálogo', 'warning');
                 return;
             }
-            mostrarToast('PDF gerado com sucesso!', 'info');
-            // Em uma aplicação real, abriria o PDF ou faria o download
+
+            const btn = this;
+            const textoOriginal = btn.innerHTML;
+            btn.disabled = true;
+            btn.innerHTML = '<i class="fas fa-spinner fa-spin me-2"></i>Gerando PDF...';
+
+            fetch('{% url "orcamentos:gerar_catalogo_pdf" %}', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-CSRFToken': '{{ csrf_token }}',
+                    'X-Requested-With': 'XMLHttpRequest'
+                },
+                body: JSON.stringify({
+                    itens: state.itensSelecionados.map(item => ({ id: item.id, quantidade: item.quantidade })),
+                    tipo_evento: document.getElementById('tipoEventoSelect').value
+                })
+            })
+            .then(async response => {
+                if (!response.ok) {
+                    const erroData = await response.json().catch(() => ({}));
+                    throw new Error(erroData.erro || 'Não foi possível gerar o PDF.');
+                }
+                return response.blob();
+            })
+            .then(blob => {
+                const url = window.URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = 'catalogo_mundo_kids.pdf';
+                document.body.appendChild(a);
+                a.click();
+                a.remove();
+                window.URL.revokeObjectURL(url);
+                mostrarToast('Catálogo em PDF gerado com sucesso!', 'success');
+            })
+            .catch(error => {
+                mostrarToast(error.message || 'Erro ao gerar o PDF do catálogo.', 'danger');
+            })
+            .finally(() => {
+                btn.disabled = false;
+                btn.innerHTML = textoOriginal;
+            });
         });
 
         // Botão de enviar para cliente
