@@ -24,6 +24,7 @@ SECRET_KEY = env('SECRET_KEY', default='django-insecure-hm_2#$g22uyn(+mjyh5wv%by
 DEBUG = env('DEBUG', default=False)
 
 ALLOWED_HOSTS = [
+    'app.mundokidscz.com.br',  # domínio de produção
     '.vercel.app',
     'localhost',
     '127.0.0.1',
@@ -35,6 +36,17 @@ ALLOWED_HOSTS = [
     '192.168.3.9',
     '192.168.18.28'
 ]
+
+# Em HTTPS o Django exige a origem na lista para aceitar formulários (login,
+# salvar orçamento, pedido do catálogo...); sem isso dá "Proibido (403) CSRF"
+CSRF_TRUSTED_ORIGINS = [
+    'https://app.mundokidscz.com.br',
+    'https://*.vercel.app',
+]
+
+# Atrás de proxy (Vercel/nginx) a conexão chega ao Django como http; o proxy
+# informa o https original neste cabeçalho
+SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')
 
 # Application definition
 INSTALLED_APPS = [
@@ -132,9 +144,10 @@ STATIC_URL = '/static/'
 #STATIC_DIR = os.path.join(BASE_DIR, 'static')
 #STATIC_ROOT = os.path.join(BASE_DIR, 'staticfiles')
 
-# Endereço público usado nos links do catálogo online enviados aos clientes
-# (ex.: https://seu-dominio.com). Vazio = usa o endereço de onde o sistema é acessado.
-CATALOGO_URL_BASE = env('CATALOGO_URL_BASE', default='')
+# Endereço público usado nos links do catálogo online enviados aos clientes.
+# Como o banco é o mesmo, o link gerado em qualquer lugar (até no PC) funciona
+# no domínio de produção. Pode ser trocado pela variável CATALOGO_URL_BASE no .env.
+CATALOGO_URL_BASE = env('CATALOGO_URL_BASE', default='https://app.mundokidscz.com.br')
 
 MEDIA_URL = '/media/'
 MEDIA_ROOT = os.path.join(BASE_DIR, 'media')
