@@ -463,6 +463,13 @@
 
 {% block extra_js %}
 <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+{% if empresa_theme.dark_mode %}
+<script>
+    // Modo escuro: textos e linhas dos gráficos em tons claros
+    Chart.defaults.color = '#cbd5e1';
+    Chart.defaults.borderColor = 'rgba(148, 163, 184, .2)';
+</script>
+{% endif %}
 <script>
     document.addEventListener('DOMContentLoaded', function() {
         // Gráfico de Evolução dos últimos 6 meses

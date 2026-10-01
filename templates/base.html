@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="pt-BR">
+<html lang="pt-BR"{% if empresa_theme.dark_mode %} data-bs-theme="dark"{% endif %}>
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -21,10 +21,10 @@
             --secondary: {{ empresa_theme.secondary }};
             --accent: {{ empresa_theme.accent }};
             
-            /* Variáveis RGB - IMPORTANTE para opacidade */
-            --primary-rgb: {{ empresa_theme.primary|slice:"1" }}{{ empresa_theme.primary|slice:"2" }};
-            --secondary-rgb: {{ empresa_theme.secondary|slice:"1" }}{{ empresa_theme.secondary|slice:"2" }};
-            --accent-rgb: {{ empresa_theme.accent|slice:"1" }}{{ empresa_theme.accent|slice:"2" }};
+            /* Variáveis RGB - IMPORTANTE para opacidade, ex.: rgba(var(--primary-rgb), .1) */
+            --primary-rgb: {{ empresa_theme.primary_rgb }};
+            --secondary-rgb: {{ empresa_theme.secondary_rgb }};
+            --accent-rgb: {{ empresa_theme.accent_rgb }};
         }    
         
         body {
@@ -107,6 +107,12 @@
             background-color: rgba(var(--primary-rgb), 0.1) !important;
         }
 
+        /* Selos amarelos com texto escuro (texto branco sobre amarelo fica ilegível) */
+        .badge.bg-warning { color: #1f2937 !important; }
+        /* Mesmo problema em outros fundos claros: selo de desconto (cor de destaque) e avisos azul-claro */
+        .discount-badge { color: #1f2937 !important; }
+        .toast.text-white:is(.bg-info, .bg-warning) { color: #0f172a !important; }
+
         .loader-spinner {
             width: 3rem;
             height: 3rem;
@@ -132,25 +138,105 @@
             }
         }
 
-        {% if empresa_theme.dark_mode %}
-        body {
-            background-color: #1a1a1a;
-            color: #ffffff;
-        }
-        
-        .navbar {
-            background-color: #2d2d2d !important;
-        }
-        
-        .profile-card, .form-container {
-            background-color: #2d2d2d;
-            color: #ffffff;
-        }
-        {% endif %}
-        
     </style>
-    
+
     {% block extra_css %}{% endblock %}
+
+    {% if empresa_theme.dark_mode %}
+    <!-- Modo escuro: o Bootstrap escurece os componentes dele (data-bs-theme="dark");
+         aqui ficam os ajustes das caixas com cor clara fixa no CSS de cada tela.
+         Vem depois do extra_css para prevalecer sobre ele. -->
+    <style>
+        /* :root[...] é mais específico que o :root das telas, que algumas declaram no <body> (depois deste bloco) */
+        :root[data-bs-theme="dark"] {
+            --mk-fundo: #0f172a;
+            --mk-superficie: #1e293b;
+            --mk-superficie-2: #273449;
+            --mk-borda: #334155;
+            --mk-texto: #e2e8f0;
+            --mk-texto-2: #94a3b8;
+            --bs-body-bg: var(--mk-fundo);
+            --bs-body-color: var(--mk-texto);
+            --bs-secondary-color: var(--mk-texto-2);
+            --bs-border-color: var(--mk-borda);
+            --bs-tertiary-bg: var(--mk-superficie-2);
+            --bs-secondary-bg: var(--mk-superficie-2);
+            /* Cores de texto mais claras: a cor da marca, o verde e o vermelho
+               "puros" ficam escuros demais sobre fundo escuro */
+            --mk-primaria-texto: color-mix(in srgb, var(--primary) 50%, #fff);
+            --mk-verde-texto: #4ade80;
+            --mk-vermelho-texto: #f87171;
+            --bs-link-color: var(--mk-primaria-texto);
+            --bs-link-color-rgb: 147, 180, 245;
+            --bs-link-hover-color: #fff;
+            /* Várias telas definem --dark (cor de texto) e --light (cor de fundo)
+               no próprio CSS; no modo escuro elas se invertem */
+            --dark: var(--mk-texto);
+            --light: var(--mk-superficie-2);
+            color-scheme: dark;
+        }
+        [data-bs-theme="dark"] .agendamento-financeiro { background: rgba(16, 185, 129, .12) !important; }
+        [data-bs-theme="dark"] .card-label { color: var(--mk-texto-2) !important; }
+        [data-bs-theme="dark"] :is(.financeiro-label, .financeiro-value) { color: var(--mk-verde-texto) !important; }
+        [data-bs-theme="dark"] .financeiro-value.saldo-negativo { color: var(--mk-vermelho-texto) !important; }
+        [data-bs-theme="dark"] :is(.text-primary, .total-price, .stats-number) { color: var(--mk-primaria-texto) !important; }
+        [data-bs-theme="dark"] .text-success { color: var(--mk-verde-texto) !important; }
+        [data-bs-theme="dark"] .text-danger { color: var(--mk-vermelho-texto) !important; }
+        [data-bs-theme="dark"] .btn-outline-primary { color: var(--mk-primaria-texto); border-color: var(--mk-primaria-texto); }
+        [data-bs-theme="dark"] .btn-outline-success { color: var(--mk-verde-texto); border-color: var(--mk-verde-texto); }
+        [data-bs-theme="dark"] .btn-outline-danger { color: var(--mk-vermelho-texto); border-color: var(--mk-vermelho-texto); }
+        [data-bs-theme="dark"] :is(.btn-outline-primary, .btn-outline-success, .btn-outline-danger):hover { color: #fff; }
+        [data-bs-theme="dark"] .nav-link:not(.active) { color: var(--mk-texto-2); }
+        [data-bs-theme="dark"] .nav-link:not(.active):hover { color: var(--mk-texto); }
+        [data-bs-theme="dark"] :is(.cliente-nome, .info-value, .section-title, .itens-categoria) { color: var(--mk-texto) !important; }
+        [data-bs-theme="dark"] :is(.stats-label, .info-label, .cliente-data) { color: var(--mk-texto-2) !important; }
+        [data-bs-theme="dark"] body,
+        [data-bs-theme="dark"] .main-content { background: var(--mk-fundo) !important; color: var(--mk-texto); }
+
+        /* Barra do topo, menu no celular, rodapé e carregando */
+        [data-bs-theme="dark"] .navbar,
+        [data-bs-theme="dark"] .navbar.bg-white,
+        [data-bs-theme="dark"] .footer,
+        [data-bs-theme="dark"] .navbar-collapse { background: var(--mk-superficie) !important; }
+        [data-bs-theme="dark"] .navbar { border-bottom: 1px solid var(--mk-borda); }
+        [data-bs-theme="dark"] .loader { background-color: rgba(15, 23, 42, .8); }
+
+        /* Caixas com fundo branco fixo no CSS das telas */
+        [data-bs-theme="dark"] :is(.card, .profile-card, .theme-preview, .form-container, .content-container,
+            .calendar-sidebar, .agendamento-card, .filtros-modernos, .section-moderna, .detail-card, .preview-item,
+            .item-card, .stats-card, .search-container, .cliente-card, .resumo-card, .dashboard-card,
+            .chart-container, .month-navigation, .month-nav-btn, .modal-content, .dropdown-menu, .list-group-item,
+            .summary-card, .theme-card) {
+            background: var(--mk-superficie) !important;
+            color: var(--mk-texto);
+            border-color: var(--mk-borda);
+        }
+        [data-bs-theme="dark"] :is(.agendamento-details, .accordion-button, .bg-light:not(.badge), .bg-white:not(.badge), .bg-body-tertiary,
+            .calendar-day:hover, .list-group-item:hover, .list-group-item-action:hover) {
+            background: var(--mk-superficie-2) !important;
+            color: var(--mk-texto);
+        }
+        [data-bs-theme="dark"] .agendamentos-list::-webkit-scrollbar-track { background: var(--mk-superficie-2); }
+
+        /* Textos com cor escura fixa (sem tocar em selos/botões coloridos que usam text-dark de propósito) */
+        [data-bs-theme="dark"] .text-dark:not(.badge):not(.btn):not([class*="bg-"]) { color: var(--mk-texto) !important; }
+        [data-bs-theme="dark"] .text-muted,
+        [data-bs-theme="dark"] :is(.calendar-weekday, .detail-label, .empty-state-modern) { color: var(--mk-texto-2) !important; }
+        [data-bs-theme="dark"] :is(h1, h2, h3, h4, h5, h6, .h1, .h2, .h3, .h4, .h5, .h6) { color: inherit; }
+
+        /* Formulários */
+        [data-bs-theme="dark"] :is(.form-control, .form-select) { background-color: var(--mk-superficie-2); color: var(--mk-texto); border-color: var(--mk-borda); }
+        [data-bs-theme="dark"] :is(.form-control, .form-select):focus { background-color: var(--mk-superficie-2); color: var(--mk-texto); }
+        [data-bs-theme="dark"] .form-control::placeholder { color: var(--mk-texto-2); }
+        [data-bs-theme="dark"] .input-group-text { background: var(--mk-superficie); color: var(--mk-texto-2); border-color: var(--mk-borda); }
+
+        /* Tabelas e botões claros */
+        [data-bs-theme="dark"] .table { --bs-table-bg: transparent; --bs-table-color: var(--mk-texto); }
+        [data-bs-theme="dark"] .btn-light { background: var(--mk-superficie-2); border-color: var(--mk-borda); color: var(--mk-texto); }
+        [data-bs-theme="dark"] .btn-outline-secondary { color: var(--mk-texto-2); border-color: var(--mk-borda); }
+        [data-bs-theme="dark"] .btn-outline-secondary:hover { background: var(--mk-superficie-2); color: var(--mk-texto); }
+    </style>
+    {% endif %}
 </head>
 <body>
     <!-- Loader para operações em andamento -->

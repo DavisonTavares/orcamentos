@@ -1389,13 +1389,8 @@ def agendamentos(request):
         'mes_atual': mes_atual,
         'mes_anterior': mes_anterior,
         'mes_proximo': mes_proximo,
-        
-        # Tema da empresa
-        'empresa_theme': {
-            'primary': getattr(request.user.empresa, 'cor_principal', '#2563EB'),
-            'secondary': getattr(request.user.empresa, 'cor_secundaria', '#64748B'),
-            'accent': getattr(request.user.empresa, 'cor_destaque', '#10B981')
-        }
+        # As cores e o modo escuro da empresa vêm do context processor
+        # accounts.context_processors.empresa_theme (não sobrescrever aqui)
     }
     
     return render(request, 'orcamentos/agendamentos.html', context)

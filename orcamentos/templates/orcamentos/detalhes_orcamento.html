@@ -310,13 +310,13 @@
                 <div class="content-body">
                     <div class="summary-item">
                         <span>Subtotal</span>
-                        <span class="fw-medium">R$ {{ subtotal }}</span>
+                        <span class="fw-medium">R$ {{ subtotal|floatformat:"2g" }}</span>
                     </div>
                     
                     {% if desconto_geral > 0 %}
                     <div class="summary-item">
                         <span>Desconto ({{ desconto_geral }}%)</span>
-                        <span class="fw-medium text-success">- R$ {{ valor_desconto }}</span>
+                        <span class="fw-medium text-success">- R$ {{ valor_desconto|floatformat:"2g" }}</span>
                     </div>
                     {% endif %}
 
@@ -336,12 +336,12 @@
 
                     <div class="summary-item pt-3">
                         <span class="fw-bold">Total</span>
-                        <span class="total-price">R$ {{ total }}</span>
+                        <span class="total-price">R$ {{ total|floatformat:"2g" }}</span>
                     </div>
                     {% if orcamento.valor_pago > 0 %}
                     <div class="summary-item pt-2">
                         <span class="fw-bold">Saldo Devedor</span>
-                        <span class="total-price text-danger">R$ {{ saldo_devedor }}</span>
+                        <span class="total-price text-danger">R$ {{ saldo_devedor|floatformat:"2g" }}</span>
                     </div>
                     {% endif %}
                 </div>

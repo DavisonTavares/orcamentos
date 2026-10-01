@@ -36,7 +36,7 @@
     }
     
     .disponivel-badge {
-        background: var(--success);
+        background: #047857;
         color: white;
         padding: 4px 10px;
         border-radius: 6px;
@@ -75,7 +75,7 @@
                     <h6 class="mb-0">{{ item.nome|default:item.descricao|truncatewords:5 }}</h6>
                     <div class="d-flex flex-wrap justify-content-end gap-1">
                         {% if item.inflavel %}
-                        <span class="badge bg-info text-dark" title="Leva: {{ kit_inflavel|join:', ' }}"><i class="fas fa-wind me-1"></i>Inflável</span>
+                        <span class="badge bg-primary" title="Leva: {{ kit_inflavel|join:', ' }}"><i class="fas fa-wind me-1"></i>Inflável</span>
                         {% endif %}
                         <span class="categoria-badge">{{ item.get_categoria_display }}</span>
                     </div>
@@ -102,7 +102,7 @@
                     <a href="{% url 'orcamentos:editar_item' item.id %}" class="btn btn-sm btn-outline-primary">Editar</a>
                     <form method="post" action="{% url 'orcamentos:alternar_inflavel' item.id %}" class="d-inline">
                         {% csrf_token %}
-                        <button type="submit" class="btn btn-sm {% if item.inflavel %}btn-info{% else %}btn-outline-info{% endif %}"
+                        <button type="submit" class="btn btn-sm {% if item.inflavel %}btn-primary{% else %}btn-outline-primary{% endif %}"
                                 title="{% if item.inflavel %}Desmarcar como inflável{% else %}Marcar como inflável (inclui {{ kit_inflavel|join:', ' }} no checklist){% endif %}">
                             <i class="fas fa-wind me-1"></i>{% if item.inflavel %}Inflável ✓{% else %}Inflável?{% endif %}
                         </button>
