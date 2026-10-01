@@ -1,229 +1,387 @@
-{% load l10n %}<!DOCTYPE html>
+<!DOCTYPE html>
 <html lang="pt-BR">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
     <meta name="robots" content="noindex, nofollow">
     <meta name="theme-color" content="{{ cor }}">
     <title>Catálogo - {{ empresa.nome }}</title>
     <meta property="og:title" content="Catálogo - {{ empresa.nome }}">
-    <meta property="og:description" content="Brinquedos e serviços para a sua festa">
-    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
-    <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <meta property="og:description" content="Brinquedos e diversão para a sua festa">
+    {% if logo_id %}
+    <link rel="icon" href="{% url 'catalogo:logo' token %}?v={{ logo_id }}">
+    <link rel="apple-touch-icon" href="{% url 'catalogo:logo' token %}?v={{ logo_id }}">
+    {% endif %}
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;600;700&display=swap" rel="stylesheet">
     <style>
-        :root { --cor: {{ cor }}; }
-        body { font-family: 'Poppins', sans-serif; background: #F8FAFC; color: #1E293B; padding-bottom: 96px; }
+        :root {
+            --cor: {{ cor }};
+            --cor-suave: color-mix(in srgb, var(--cor) 10%, #fff);
+            --texto: #0F172A;
+            --texto-2: #64748B;
+            --fundo: #F4F6FA;
+            --borda: #E2E8F0;
+            --verde: #059669;
+            --raio: 16px;
+            --seguro-baixo: env(safe-area-inset-bottom, 0px);
+        }
+        * { box-sizing: border-box; }
+        [hidden] { display: none !important; }
+        html { scroll-behavior: smooth; -webkit-text-size-adjust: 100%; }
+        body { margin: 0; font-family: 'Poppins', system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif; background: var(--fundo);
+            color: var(--texto); line-height: 1.4; padding-bottom: calc(96px + var(--seguro-baixo)); -webkit-tap-highlight-color: transparent; }
+        body.travado { overflow: hidden; }
+        button, input, select, textarea { font: inherit; color: inherit; }
+        button { cursor: pointer; }
+        img { display: block; max-width: 100%; }
+        .icone { width: 1em; height: 1em; fill: currentColor; flex-shrink: 0; }
+        .oculto-leitor { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
 
-        .topo { background: var(--cor); color: #fff; text-align: center; padding: 24px 16px 56px; }
-        .topo img { max-height: 84px; max-width: 220px; }
-        .topo h1 { font-size: 1.35rem; font-weight: 700; margin: 12px 0 4px; }
-        .topo p { margin: 0; opacity: .9; font-size: .95rem; }
+        /* ---------- Topo ---------- */
+        .topo { background: var(--cor); color: #fff; text-align: center; padding: 22px 16px 46px;
+            background-image: radial-gradient(circle at 15% 20%, rgba(255,255,255,.18) 0 60px, transparent 61px),
+                              radial-gradient(circle at 90% 80%, rgba(255,255,255,.12) 0 90px, transparent 91px); }
+        .topo img { max-height: 76px; max-width: 200px; margin: 0 auto 10px; filter: drop-shadow(0 4px 10px rgba(0,0,0,.18)); }
+        .topo h1 { font-size: 1.3rem; font-weight: 700; margin: 0 0 4px; }
+        .topo p { margin: 0; opacity: .92; font-size: .92rem; }
+        .destaques { display: flex; flex-wrap: wrap; justify-content: center; gap: 6px; margin-top: 12px; }
+        .destaques span { background: rgba(255,255,255,.18); border-radius: 999px; padding: 4px 10px; font-size: .75rem; font-weight: 600;
+            display: inline-flex; align-items: center; gap: 5px; }
 
-        .conteudo { max-width: 1100px; margin: -36px auto 0; padding: 0 16px; }
-        .secao { margin-bottom: 28px; }
-        .secao h2 { font-size: 1.1rem; font-weight: 700; margin: 0 0 12px; display: flex; align-items: center; gap: 8px; }
-        .secao h2::before { content: ""; width: 6px; height: 20px; border-radius: 3px; background: var(--cor); }
+        /* ---------- Categorias (fixas no topo ao rolar) ---------- */
+        .categorias { position: sticky; top: 0; z-index: 15; background: rgba(244,246,250,.92); backdrop-filter: saturate(1.4) blur(8px);
+            -webkit-backdrop-filter: saturate(1.4) blur(8px); margin-top: -24px; padding: 10px 0; }
+        .categorias .trilho { display: flex; gap: 8px; overflow-x: auto; padding: 0 16px; scrollbar-width: none; max-width: 1100px; margin: 0 auto; }
+        .categorias .trilho::-webkit-scrollbar { display: none; }
+        .categorias a { flex-shrink: 0; text-decoration: none; color: var(--texto); background: #fff; border: 1px solid var(--borda);
+            border-radius: 999px; padding: 8px 14px; font-size: .85rem; font-weight: 600; min-height: 40px; display: inline-flex; align-items: center;
+            box-shadow: 0 1px 3px rgba(15,23,42,.06); transition: background .15s, color .15s; }
+        .categorias a.ativa { background: var(--cor); border-color: var(--cor); color: #fff; }
 
-        .grade { display: grid; gap: 12px; grid-template-columns: repeat(2, minmax(0, 1fr)); }
-        @media (min-width: 768px) { .grade { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 16px; } }
-        @media (min-width: 1024px) { .grade { grid-template-columns: repeat(4, minmax(0, 1fr)); } }
+        /* ---------- Conteúdo ---------- */
+        .conteudo { max-width: 1100px; margin: 0 auto; padding: 4px 16px 0; }
+        .secao { scroll-margin-top: 70px; margin-bottom: 26px; }
+        .secao h2 { font-size: 1.05rem; font-weight: 700; margin: 10px 0 12px; display: flex; align-items: center; gap: 8px; }
+        .secao h2::before { content: ""; width: 5px; height: 18px; border-radius: 3px; background: var(--cor); }
+        .secao h2 small { color: var(--texto-2); font-weight: 400; font-size: .8rem; }
 
-        .card-item { background: #fff; border-radius: 14px; overflow: hidden; box-shadow: 0 2px 12px rgba(15, 23, 42, .08); display: flex; flex-direction: column; }
-        .card-item .foto { aspect-ratio: 1 / 1; background: #EEF2F7; display: flex; align-items: center; justify-content: center; }
-        .card-item .foto img { width: 100%; height: 100%; object-fit: cover; }
-        .card-item .foto i { font-size: 2.4rem; color: #94A3B8; }
-        /* Item sem foto: logo da empresa menor e suavizada, sobre um fundo na cor da marca */
-        .card-item .foto.sem-foto { background: #EEF2F7; background: color-mix(in srgb, var(--cor) 10%, #fff); }
-        .card-item .foto.sem-foto img { width: 58%; height: 58%; object-fit: contain; opacity: .55; }
-        .card-item .info { padding: 10px 12px 12px; display: flex; flex-direction: column; flex: 1; }
-        .card-item .nome { font-weight: 600; font-size: .92rem; line-height: 1.25; margin-bottom: 4px; overflow-wrap: anywhere; }
-        .card-item .descricao { font-size: .78rem; color: #64748B; margin-bottom: 8px;
-            display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
-        .card-item .preco { margin-top: auto; font-weight: 700; font-size: 1.05rem; color: var(--cor); }
-        .card-item .pix { font-size: .75rem; color: #059669; font-weight: 600; }
+        .grade { display: grid; gap: 10px; grid-template-columns: repeat(2, minmax(0, 1fr)); }
+        @media (min-width: 640px) { .grade { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 14px; } }
+        @media (min-width: 1000px) { .grade { grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 18px; } }
 
-        .rodape { text-align: center; color: #64748B; font-size: .8rem; margin: 8px 0 24px; }
+        /* ---------- Card do item ---------- */
+        .card { background: #fff; border-radius: var(--raio); overflow: hidden; display: flex; flex-direction: column;
+            box-shadow: 0 1px 2px rgba(15,23,42,.05), 0 6px 18px rgba(15,23,42,.06); }
+        .card .abrir { all: unset; cursor: pointer; display: block; }
+        .card .abrir:focus-visible { outline: 3px solid var(--cor); outline-offset: -3px; }
+        .foto { position: relative; aspect-ratio: 1 / 1; background: #EEF2F7; display: flex; align-items: center; justify-content: center; overflow: hidden; }
+        .foto img { width: 100%; height: 100%; object-fit: cover; }
+        .foto.sem-foto { background: var(--cor-suave); }
+        .foto.sem-foto img { width: 56%; height: 56%; object-fit: contain; opacity: .55; }
+        .foto .icone { font-size: 2.4rem; color: #94A3B8; }
+        .selo-pix { position: absolute; top: 8px; left: 8px; background: var(--verde); color: #fff; font-size: .7rem; font-weight: 700;
+            padding: 3px 8px; border-radius: 999px; display: inline-flex; align-items: center; gap: 3px; }
+        .foto .selo-pix .icone { font-size: .8rem; color: #fff; }
+        .card .info { padding: 10px 11px 0; flex: 1; display: flex; flex-direction: column; }
+        .card .nome { font-weight: 600; font-size: .9rem; line-height: 1.25; overflow-wrap: anywhere;
+            display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+        .card .descricao { font-size: .76rem; color: var(--texto-2); margin-top: 3px;
+            display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+        .precos { margin-top: auto; padding-top: 8px; display: block; }
+        .preco { display: block; font-weight: 700; font-size: 1.08rem; color: var(--texto); }
+        .pix { font-size: .74rem; color: var(--verde); font-weight: 600; display: flex; align-items: center; gap: 3px; }
+        .card .controle { padding: 10px 11px 11px; }
 
-        .btn-whatsapp { position: fixed; left: 16px; right: 16px; bottom: 16px; max-width: 480px; margin: 0 auto;
-            background: #25D366; color: #fff; border-radius: 999px; padding: 14px 20px; font-weight: 600;
-            text-align: center; text-decoration: none; box-shadow: 0 6px 20px rgba(0, 0, 0, .2); }
-        .btn-whatsapp:hover { color: #fff; background: #1EBE5A; }
+        /* ---------- Botões de adicionar / quantidade ---------- */
+        .btn-add { width: 100%; min-height: 44px; border: 1.5px solid var(--cor); color: var(--cor); background: #fff; border-radius: 12px;
+            font-weight: 600; font-size: .88rem; display: flex; align-items: center; justify-content: center; gap: 6px; transition: transform .1s; }
+        .btn-add:active { transform: scale(.97); background: var(--cor-suave); }
+        .stepper { display: flex; align-items: center; justify-content: space-between; background: var(--cor); color: #fff;
+            border-radius: 12px; min-height: 44px; overflow: hidden; }
+        .stepper button { background: transparent; border: 0; color: #fff; width: 44px; height: 44px; display: flex;
+            align-items: center; justify-content: center; font-size: 1.05rem; }
+        .stepper button:active { background: rgba(0,0,0,.12); }
+        .stepper output { font-weight: 700; min-width: 24px; text-align: center; }
 
-        /* Carrinho */
-        .controle { margin-top: 10px; }
-        .btn-add { width: 100%; border: 1.5px solid var(--cor); color: var(--cor); background: #fff; border-radius: 10px;
-            padding: 7px 8px; font-weight: 600; font-size: .85rem; }
-        .btn-add:active { transform: scale(.98); }
-        .stepper { display: flex; align-items: center; justify-content: space-between; background: var(--cor);
-            border-radius: 10px; color: #fff; overflow: hidden; }
-        .stepper button { background: transparent; border: 0; color: #fff; width: 40px; height: 36px; font-size: 1.1rem; }
-        .stepper span { font-weight: 700; }
+        .rodape { text-align: center; color: var(--texto-2); font-size: .8rem; margin: 6px 0 20px; }
+        .rodape a { color: inherit; display: inline-flex; align-items: center; gap: 4px; }
+        .vazio { text-align: center; color: var(--texto-2); padding: 48px 16px; }
 
-        .barra-carrinho { position: fixed; left: 12px; right: 12px; bottom: 12px; max-width: 560px; margin: 0 auto;
-            background: #1E293B; color: #fff; border-radius: 16px; padding: 10px 10px 10px 16px; display: flex;
-            align-items: center; justify-content: space-between; gap: 10px; box-shadow: 0 8px 24px rgba(0,0,0,.25); z-index: 20; }
-        .barra-carrinho .resumo { line-height: 1.2; }
-        .barra-carrinho .resumo small { color: #86EFAC; display: block; }
-        .barra-carrinho button { background: var(--cor); color: #fff; border: 0; border-radius: 12px; padding: 10px 16px; font-weight: 600; white-space: nowrap; }
+        /* ---------- Rodapé fixo: WhatsApp ou carrinho ---------- */
+        .fixo-baixo { position: fixed; left: 12px; right: 12px; bottom: calc(12px + var(--seguro-baixo)); max-width: 560px; margin: 0 auto; z-index: 20; }
+        .btn-whatsapp { display: flex; align-items: center; justify-content: center; gap: 8px; min-height: 52px; background: #25D366; color: #fff;
+            border-radius: 999px; font-weight: 600; text-decoration: none; box-shadow: 0 8px 22px rgba(0,0,0,.2); }
+        .btn-whatsapp .icone { font-size: 1.3rem; }
+        .barra-carrinho { background: var(--texto); color: #fff; border-radius: 18px; padding: 8px 8px 8px 14px; display: flex; align-items: center;
+            justify-content: space-between; gap: 10px; box-shadow: 0 10px 28px rgba(0,0,0,.28); }
+        .barra-carrinho.pulo { animation: pulo .35s ease; }
+        @keyframes pulo { 40% { transform: scale(1.03); } }
+        .barra-carrinho .resumo { display: flex; align-items: center; gap: 10px; min-width: 0; }
+        .contador { background: var(--cor); border-radius: 12px; min-width: 38px; height: 38px; display: flex; align-items: center;
+            justify-content: center; font-weight: 700; position: relative; }
+        .contador .icone { font-size: 1.15rem; }
+        .contador b { position: absolute; top: -6px; right: -6px; background: #fff; color: var(--texto); font-size: .7rem; border-radius: 999px;
+            min-width: 19px; height: 19px; display: flex; align-items: center; justify-content: center; padding: 0 4px; }
+        .barra-carrinho .valores { line-height: 1.15; white-space: nowrap; }
+        .barra-carrinho .valores strong { font-size: 1rem; }
+        .barra-carrinho .valores small { display: block; color: #86EFAC; font-size: .72rem; }
+        .barra-carrinho button { background: var(--cor); color: #fff; border: 0; border-radius: 12px; min-height: 44px; padding: 0 16px;
+            font-weight: 600; white-space: nowrap; }
+        .aviso { position: fixed; left: 50%; bottom: calc(86px + var(--seguro-baixo)); transform: translate(-50%, 12px); background: var(--texto);
+            color: #fff; padding: 8px 14px; border-radius: 999px; font-size: .82rem; opacity: 0; pointer-events: none; transition: .2s; z-index: 25;
+            display: flex; align-items: center; gap: 6px; white-space: nowrap; }
+        .aviso.visivel { opacity: 1; transform: translate(-50%, 0); }
 
-        .painel { position: fixed; inset: 0; background: rgba(15,23,42,.55); z-index: 30; display: none; }
-        .painel.aberto { display: block; }
-        .painel .folha { position: absolute; left: 0; right: 0; bottom: 0; max-height: 92vh; overflow-y: auto; background: #fff;
-            border-radius: 20px 20px 0 0; padding: 18px 16px 24px; max-width: 640px; margin: 0 auto; }
-        .painel h3 { font-size: 1.15rem; font-weight: 700; }
-        .linha-pedido { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 8px 0; border-bottom: 1px solid #E2E8F0; font-size: .9rem; }
-        .linha-pedido .stepper { min-width: 112px; }
-        .totais { background: #F8FAFC; border-radius: 12px; padding: 10px 12px; margin: 12px 0; }
-        .painel label { font-size: .85rem; font-weight: 600; margin-bottom: 2px; }
+        /* ---------- Folhas (detalhe do item e pedido) ---------- */
+        .folha-fundo { position: fixed; inset: 0; background: rgba(15,23,42,.55); z-index: 30; display: none; }
+        .folha-fundo.aberto { display: block; animation: aparecer .2s ease; }
+        .folha { position: absolute; left: 0; right: 0; bottom: 0; max-width: 640px; margin: 0 auto; background: #fff;
+            border-radius: 22px 22px 0 0; max-height: 94vh; max-height: 94dvh; display: flex; flex-direction: column; animation: subir .25s ease; }
+        @media (min-width: 700px) { .folha { bottom: 50%; transform: translateY(50%); border-radius: 22px; } }
+        @keyframes subir { from { transform: translateY(40px); opacity: .6; } }
+        @keyframes aparecer { from { opacity: 0; } }
+        .folha-topo { display: flex; align-items: center; justify-content: space-between; padding: 14px 16px 8px; position: relative; }
+        .folha-topo::before { content: ""; position: absolute; top: 6px; left: 50%; transform: translateX(-50%); width: 40px; height: 4px;
+            border-radius: 2px; background: var(--borda); }
+        .folha-topo h3 { margin: 0; font-size: 1.1rem; font-weight: 700; }
+        .btn-fechar { width: 40px; height: 40px; border-radius: 50%; border: 0; background: var(--fundo); display: flex;
+            align-items: center; justify-content: center; font-size: 1.1rem; }
+        .folha-corpo { overflow-y: auto; padding: 4px 16px 16px; -webkit-overflow-scrolling: touch; overscroll-behavior: contain; }
+        .folha-rodape { padding: 12px 16px calc(12px + var(--seguro-baixo)); border-top: 1px solid var(--borda); background: #fff; }
+
+        .detalhe-foto { border-radius: 14px; overflow: hidden; margin-bottom: 12px; }
+        .detalhe-foto .foto { aspect-ratio: 4 / 3; }
+        .detalhe h4 { font-size: 1.1rem; margin: 0 0 6px; }
+        .detalhe p { color: var(--texto-2); font-size: .9rem; margin: 0 0 12px; white-space: pre-line; }
+
+        .linha-pedido { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 10px 0;
+            border-bottom: 1px solid var(--borda); font-size: .9rem; }
+        .linha-pedido .stepper { min-width: 120px; }
+        .totais { background: var(--fundo); border-radius: 12px; padding: 10px 12px; margin: 12px 0 4px; }
+        .totais div { display: flex; justify-content: space-between; }
+        .totais .pix-total { color: var(--verde); font-size: .85rem; font-weight: 600; }
+
+        .form-titulo { font-size: .95rem; font-weight: 700; margin: 18px 0 8px; }
+        .campo { margin-bottom: 10px; }
+        .campo label { display: block; font-size: .82rem; font-weight: 600; margin-bottom: 4px; }
+        .campo input, .campo select, .campo textarea { width: 100%; font-size: 16px; /* 16px evita zoom automático no iPhone */
+            border: 1.5px solid var(--borda); border-radius: 12px; padding: 11px 12px; background: #fff; min-height: 46px; }
+        .campo input:focus, .campo select:focus, .campo textarea:focus { outline: none; border-color: var(--cor);
+            box-shadow: 0 0 0 3px color-mix(in srgb, var(--cor) 20%, transparent); }
+        .campos-lado { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+        .campos-lado .inteiro { grid-column: 1 / -1; }
+        @media (min-width: 480px) { .campos-lado { grid-template-columns: 2fr 1fr 1fr; } .campos-lado .inteiro { grid-column: auto; } }
+        .nota { font-size: .78rem; color: var(--texto-2); display: flex; gap: 6px; align-items: flex-start; margin: 4px 0 0; }
+        .erros { background: #FEF2F2; color: #B91C1C; border: 1px solid #FECACA; border-radius: 12px; padding: 10px 12px; font-size: .85rem; margin-bottom: 10px; }
+        .btn-enviar { width: 100%; min-height: 52px; border: 0; border-radius: 14px; background: var(--cor); color: #fff; font-weight: 700; font-size: 1rem; }
+        .btn-enviar:disabled { opacity: .55; }
         .campo-oculto { position: absolute; left: -9999px; width: 1px; height: 1px; overflow: hidden; }
+
+        @media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation: none !important; transition: none !important; scroll-behavior: auto !important; } }
     </style>
 </head>
 <body>
+    <!-- Ícones (desenhados aqui para não depender de biblioteca externa) -->
+    <svg width="0" height="0" style="position:absolute" aria-hidden="true">
+        <symbol id="i-mais" viewBox="0 0 24 24"><path d="M11 5h2v6h6v2h-6v6h-2v-6H5v-2h6z"/></symbol>
+        <symbol id="i-menos" viewBox="0 0 24 24"><path d="M5 11h14v2H5z"/></symbol>
+        <symbol id="i-fechar" viewBox="0 0 24 24"><path d="M6.4 5 5 6.4 10.6 12 5 17.6 6.4 19l5.6-5.6 5.6 5.6 1.4-1.4-5.6-5.6L19 6.4 17.6 5 12 10.6z"/></symbol>
+        <symbol id="i-raio" viewBox="0 0 24 24"><path d="M13 2 4 14h6l-1 8 9-12h-6z"/></symbol>
+        <symbol id="i-relogio" viewBox="0 0 24 24"><path d="M12 2a10 10 0 1 0 0 20 10 10 0 0 0 0-20zm0 2a8 8 0 1 1 0 16 8 8 0 0 1 0-16zm-1 3v6l5 3 1-1.6-4-2.4V7z"/></symbol>
+        <symbol id="i-check" viewBox="0 0 24 24"><path d="M9 16.2 4.8 12l-1.4 1.4L9 19 21 7l-1.4-1.4z"/></symbol>
+        <symbol id="i-sacola" viewBox="0 0 24 24"><path d="M7 7V6a5 5 0 0 1 10 0v1h3l-1 15H5L4 7zm2 0h6V6a3 3 0 0 0-6 0zM6.1 9l.8 11h10.2l.8-11z"/></symbol>
+        <symbol id="i-pin" viewBox="0 0 24 24"><path d="M12 2a7 7 0 0 0-7 7c0 5.2 7 13 7 13s7-7.8 7-13a7 7 0 0 0-7-7zm0 9.5A2.5 2.5 0 1 1 12 6.5a2.5 2.5 0 0 1 0 5z"/></symbol>
+        <symbol id="i-presente" viewBox="0 0 24 24"><path d="M20 7h-2.2A3 3 0 0 0 12 4.4 3 3 0 0 0 6.2 7H4a1 1 0 0 0-1 1v4h1v8a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1v-8h1V8a1 1 0 0 0-1-1zM15 5a1 1 0 1 1 0 2h-2a2 2 0 0 1 2-2zM9 5a2 2 0 0 1 2 2H9a1 1 0 1 1 0-2zM5 9h6v2H5zm1 4h5v6H6zm7 6v-6h5v6zm0-8V9h6v2z"/></symbol>
+        <symbol id="i-insta" viewBox="0 0 24 24"><path d="M7 2h10a5 5 0 0 1 5 5v10a5 5 0 0 1-5 5H7a5 5 0 0 1-5-5V7a5 5 0 0 1 5-5zm0 2a3 3 0 0 0-3 3v10a3 3 0 0 0 3 3h10a3 3 0 0 0 3-3V7a3 3 0 0 0-3-3zm5 3.5a4.5 4.5 0 1 1 0 9 4.5 4.5 0 0 1 0-9zm0 2a2.5 2.5 0 1 0 0 5 2.5 2.5 0 0 0 0-5zM17.5 6a1 1 0 1 1 0 2 1 1 0 0 1 0-2z"/></symbol>
+        <symbol id="i-whats" viewBox="0 0 24 24"><path d="M12 2a10 10 0 0 0-8.6 15.1L2 22l5-1.3A10 10 0 1 0 12 2zm0 18.2c-1.6 0-3.1-.4-4.4-1.2l-.3-.2-3 .8.8-2.9-.2-.3A8.2 8.2 0 1 1 12 20.2zm4.5-6.1c-.2-.1-1.5-.7-1.7-.8-.2-.1-.4-.1-.6.1l-.8 1c-.1.2-.3.2-.5.1a6.7 6.7 0 0 1-3.3-2.9c-.3-.4.3-.4.8-1.4.1-.2 0-.3 0-.4l-.8-1.8c-.2-.5-.4-.4-.6-.4h-.5c-.2 0-.4.1-.6.3-.2.2-.8.8-.8 2s.8 2.3.9 2.5c.1.2 1.6 2.5 4 3.5 1.5.6 2.1.7 2.8.6.5-.1 1.5-.6 1.7-1.2.2-.6.2-1.1.2-1.2-.1-.1-.2-.2-.4-.3z"/></symbol>
+    </svg>
+
     <header class="topo">
         {% if logo_id %}
-        <img src="{% url 'catalogo:logo' token %}?v={{ logo_id }}" alt="{{ empresa.nome }}">
+        <img src="{% url 'catalogo:logo' token %}?v={{ logo_id }}" alt="{{ empresa.nome }}" width="200" height="76">
         {% endif %}
-        <h1>Catálogo {{ empresa.nome }}</h1>
-        <p>Diversão garantida para a sua festa 🎉</p>
+        <h1>Diversão para a sua festa 🎉</h1>
+        <p>Escolha os brinquedos, monte o seu pedido e receba o orçamento.</p>
+        <div class="destaques">
+            <span><svg class="icone"><use href="#i-check"/></svg>Montagem e desmontagem inclusas</span>
+            {% if empresa.cidade %}<span><svg class="icone"><use href="#i-pin"/></svg>{{ empresa.cidade }} e região</span>{% endif %}
+        </div>
     </header>
+
+    {% if secoes %}
+    <nav class="categorias" aria-label="Categorias">
+        <div class="trilho">
+            {% for titulo, itens in secoes %}
+            <a href="#secao-{{ forloop.counter }}" data-categoria="secao-{{ forloop.counter }}">{{ titulo }}</a>
+            {% endfor %}
+        </div>
+    </nav>
+    {% endif %}
 
     <main class="conteudo">
         {% for titulo, itens in secoes %}
-        <section class="secao">
-            <h2>{{ titulo }}</h2>
+        <section class="secao" id="secao-{{ forloop.counter }}">
+            <h2>{{ titulo }} <small>· {{ itens|length }}</small></h2>
             <div class="grade">
                 {% for item in itens %}
-                <article class="card-item" data-id="{{ item.id }}" data-nome="{{ item.nome }}"
+                <article class="card card-item" data-id="{{ item.id }}" data-nome="{{ item.nome }}"
                          data-valor="{{ item.valor|stringformat:'.2f' }}" data-desconto="{{ item.desconto|stringformat:'.2f' }}">
-                    {% if item.foto_id %}
-                    <div class="foto">
-                        <img src="{% url 'catalogo:foto' token item.id %}?v={{ item.foto_id }}" alt="{{ item.nome }}" loading="lazy">
-                    </div>
-                    {% elif logo_id %}
-                    <div class="foto sem-foto">
-                        <img src="{% url 'catalogo:logo' token %}?v={{ logo_id }}" alt="" loading="lazy">
-                    </div>
-                    {% else %}
-                    <div class="foto">
-                        <i class="fas fa-gift" aria-hidden="true"></i>
-                    </div>
-                    {% endif %}
-                    <div class="info">
-                        <div class="nome">{{ item.nome }}</div>
-                        {% if item.descricao %}<div class="descricao">{{ item.descricao }}</div>{% endif %}
-                        <div class="preco">R$ {{ item.valor|floatformat:"0g" }}</div>
-                        {% if item.valor_pix %}
-                        <div class="pix"><i class="fas fa-bolt me-1"></i>R$ {{ item.valor_pix|floatformat:"0g" }} no PIX à vista</div>
-                        {% endif %}
-                        <div class="controle" data-controle="{{ item.id }}"></div>
-                    </div>
+                    <button type="button" class="abrir" data-abrir="{{ item.id }}" aria-label="Ver detalhes de {{ item.nome }}">
+                        <span class="foto{% if not item.foto_id and logo_id %} sem-foto{% endif %}">
+                            {% if item.foto_id %}
+                            <img src="{% url 'catalogo:foto' token item.id %}?v={{ item.foto_id }}" alt="{{ item.nome }}" loading="lazy" decoding="async" width="400" height="400">
+                            {% elif logo_id %}
+                            <img src="{% url 'catalogo:logo' token %}?v={{ logo_id }}" alt="" loading="lazy" decoding="async">
+                            {% else %}
+                            <svg class="icone"><use href="#i-presente"/></svg>
+                            {% endif %}
+                            {% if item.valor_pix %}<span class="selo-pix"><svg class="icone"><use href="#i-raio"/></svg>PIX -{{ item.desconto|floatformat:"0" }}%</span>{% endif %}
+                        </span>
+                        <span class="info">
+                            <span class="nome">{{ item.nome }}</span>
+                            {% if item.descricao %}<span class="descricao">{{ item.descricao }}</span>{% endif %}
+                            <span class="precos">
+                                <span class="preco">R$ {{ item.valor|floatformat:"0g" }}</span>
+                                {% if item.valor_pix %}<span class="pix">R$ {{ item.valor_pix|floatformat:"0g" }} no PIX</span>{% endif %}
+                            </span>
+                        </span>
+                    </button>
+                    <div class="controle" data-controle="{{ item.id }}"></div>
+                    <template data-detalhe="{{ item.id }}">
+                        <div class="detalhe">
+                            <div class="detalhe-foto">
+                                {% if item.foto_id %}
+                                <div class="foto"><img src="{% url 'catalogo:foto' token item.id %}?v={{ item.foto_id }}" alt="{{ item.nome }}"></div>
+                                {% elif logo_id %}
+                                <div class="foto sem-foto"><img src="{% url 'catalogo:logo' token %}?v={{ logo_id }}" alt=""></div>
+                                {% else %}
+                                <div class="foto"><svg class="icone"><use href="#i-presente"/></svg></div>
+                                {% endif %}
+                            </div>
+                            <h4>{{ item.nome }}</h4>
+                            {% if item.descricao %}<p>{{ item.descricao }}</p>{% endif %}
+                            <div class="preco">R$ {{ item.valor|floatformat:"0g" }}</div>
+                            {% if item.valor_pix %}<div class="pix"><svg class="icone"><use href="#i-raio"/></svg>R$ {{ item.valor_pix|floatformat:"0g" }} no PIX à vista</div>{% endif %}
+                        </div>
+                    </template>
                 </article>
                 {% endfor %}
             </div>
         </section>
         {% empty %}
-        <p class="text-center text-muted py-5">Catálogo em atualização. Fale com a gente pelo WhatsApp! 😊</p>
+        <p class="vazio">Catálogo em atualização. Fale com a gente pelo WhatsApp! 😊</p>
         {% endfor %}
 
         <p class="rodape">
             Valores para locação, sujeitos à disponibilidade da data.<br>
-            {% if empresa.instagram %}<i class="fab fa-instagram me-1"></i>{{ empresa.instagram }}{% endif %}
+            {% if empresa.instagram %}<span class="rodape-insta"><svg class="icone"><use href="#i-insta"/></svg>{{ empresa.instagram }}</span>{% endif %}
         </p>
     </main>
 
-    {% if whatsapp %}
-    <a class="btn-whatsapp" id="btnWhatsapp" target="_blank" rel="noopener"
-       href="https://wa.me/{{ whatsapp }}?text={{ 'Olá! Vi o catálogo e gostaria de fazer um orçamento 😊'|urlencode }}">
-        <i class="fab fa-whatsapp me-2"></i>Falar no WhatsApp
-    </a>
-    {% endif %}
-
-    <!-- Barra do carrinho (aparece quando há itens) -->
-    <div class="barra-carrinho" id="barraCarrinho" hidden>
-        <div class="resumo">
-            <strong id="barraQtd"></strong> · <strong id="barraTotal"></strong>
-            <small id="barraPix"></small>
-        </div>
-        <button type="button" id="btnAbrirPedido">Pedir orçamento</button>
-    </div>
-
-    <!-- Painel do pedido: itens + dados da festa -->
-    <div class="painel{% if erros %} aberto{% endif %}" id="painelPedido" role="dialog" aria-modal="true" aria-labelledby="tituloPedido">
-        <div class="folha">
-            <div class="d-flex justify-content-between align-items-center mb-2">
-                <h3 class="mb-0" id="tituloPedido">Seu pedido</h3>
-                <button type="button" class="btn-close" id="btnFecharPedido" aria-label="Fechar"></button>
-            </div>
-
-            {% if erros %}
-            <div class="alert alert-danger py-2 small">
-                {% for erro in erros %}<div>{{ erro }}</div>{% endfor %}
-            </div>
-            {% endif %}
-
-            <div id="listaPedido"></div>
-            <div class="totais">
-                <div class="d-flex justify-content-between"><span>Total</span><strong id="painelTotal"></strong></div>
-                <div class="d-flex justify-content-between text-success small" id="painelPixLinha">
-                    <span><i class="fas fa-bolt me-1"></i>No PIX à vista</span><strong id="painelPix"></strong>
+    <!-- Rodapé fixo: WhatsApp (carrinho vazio) ou resumo do carrinho -->
+    <div class="fixo-baixo">
+        {% if whatsapp %}
+        <a class="btn-whatsapp" id="btnWhatsapp" target="_blank" rel="noopener"
+           href="https://wa.me/{{ whatsapp }}?text={{ 'Olá! Vi o catálogo e gostaria de fazer um orçamento 😊'|urlencode }}">
+            <svg class="icone"><use href="#i-whats"/></svg>Falar no WhatsApp
+        </a>
+        {% endif %}
+        <div class="barra-carrinho" id="barraCarrinho" hidden>
+            <div class="resumo">
+                <div class="contador"><svg class="icone"><use href="#i-sacola"/></svg><b id="barraQtd">0</b></div>
+                <div class="valores">
+                    <strong id="barraTotal"></strong>
+                    <small id="barraPix"></small>
                 </div>
             </div>
+            <button type="button" id="btnAbrirPedido">Ver pedido</button>
+        </div>
+    </div>
+    <div class="aviso" id="aviso" role="status" aria-live="polite"></div>
 
-            <form method="post" action="{% url 'catalogo:pedido' token %}" id="formPedido">
+    <!-- Detalhe do item -->
+    <div class="folha-fundo" id="painelItem" role="dialog" aria-modal="true" aria-label="Detalhes do item">
+        <div class="folha">
+            <div class="folha-topo">
+                <span></span>
+                <button type="button" class="btn-fechar" data-fechar aria-label="Fechar"><svg class="icone"><use href="#i-fechar"/></svg></button>
+            </div>
+            <div class="folha-corpo" id="detalheConteudo"></div>
+            <div class="folha-rodape"><div class="controle" id="detalheControle"></div></div>
+        </div>
+    </div>
+
+    <!-- Pedido: itens + dados da festa -->
+    <div class="folha-fundo{% if erros %} aberto{% endif %}" id="painelPedido" role="dialog" aria-modal="true" aria-labelledby="tituloPedido">
+        <div class="folha">
+            <div class="folha-topo">
+                <h3 id="tituloPedido">Seu pedido</h3>
+                <button type="button" class="btn-fechar" data-fechar aria-label="Fechar"><svg class="icone"><use href="#i-fechar"/></svg></button>
+            </div>
+            <form method="post" action="{% url 'catalogo:pedido' token %}" id="formPedido" class="folha-corpo" style="padding-bottom: 0;">
                 {% csrf_token %}
+                {% if erros %}
+                <div class="erros">{% for erro in erros %}<div>{{ erro }}</div>{% endfor %}</div>
+                {% endif %}
+
+                <div id="listaPedido"></div>
+                <div class="totais">
+                    <div><span>Total</span><strong id="painelTotal"></strong></div>
+                    <div class="pix-total" id="painelPixLinha"><span>No PIX à vista</span><strong id="painelPix"></strong></div>
+                </div>
+
                 <div id="camposItens"></div>
                 <div class="campo-oculto" aria-hidden="true">
                     <label for="website">Não preencha este campo</label>
                     <input type="text" name="website" id="website" tabindex="-1" autocomplete="off">
                 </div>
 
-                <h3 class="mt-3 mb-2" style="font-size: 1rem;">Dados da festa</h3>
-                <div class="mb-2">
+                <div class="form-titulo">Dados da festa</div>
+                <div class="campo">
                     <label for="nome">Seu nome</label>
-                    <input type="text" class="form-control" id="nome" name="nome" required maxlength="100" autocomplete="name" value="{{ dados.nome }}">
+                    <input type="text" id="nome" name="nome" required maxlength="100" autocomplete="name" value="{{ dados.nome }}">
                 </div>
-                <div class="mb-2">
+                <div class="campo">
                     <label for="telefone">WhatsApp (com DDD)</label>
-                    <input type="tel" class="form-control" id="telefone" name="telefone" required inputmode="tel" autocomplete="tel"
+                    <input type="tel" id="telefone" name="telefone" required inputmode="tel" autocomplete="tel"
                            placeholder="(83) 99999-0000" value="{{ dados.telefone }}">
                 </div>
-                <div class="row g-2 mb-2">
-                    <div class="col-6">
+                <div class="campos-lado">
+                    <div class="campo inteiro">
                         <label for="data_evento">Data da festa</label>
-                        <input type="date" class="form-control" id="data_evento" name="data_evento" required min="{{ hoje }}" value="{{ dados.data_evento }}">
+                        <input type="date" id="data_evento" name="data_evento" required min="{{ hoje }}" value="{{ dados.data_evento }}">
                     </div>
-                    <div class="col-3">
+                    <div class="campo">
                         <label for="hora_evento">Horário</label>
-                        <input type="time" class="form-control" id="hora_evento" name="hora_evento" required value="{{ dados.hora_evento|default:'16:00' }}">
+                        <input type="time" id="hora_evento" name="hora_evento" required value="{{ dados.hora_evento|default:'16:00' }}">
                     </div>
-                    <div class="col-3">
+                    <div class="campo">
                         <label for="periodo_evento">Duração</label>
-                        <select class="form-select" id="periodo_evento" name="periodo_evento">
+                        <select id="periodo_evento" name="periodo_evento">
                             {% for h in "123456" %}
-                            <option value="{{ h }}" {% if dados.periodo_evento == h or not dados.periodo_evento and h == "3" %}selected{% endif %}>{{ h }}h</option>
+                            <option value="{{ h }}" {% if dados.periodo_evento == h or not dados.periodo_evento and h == "3" %}selected{% endif %}>{{ h }} hora{% if h != "1" %}s{% endif %}</option>
                             {% endfor %}
                         </select>
                     </div>
                 </div>
-                <div class="mb-2">
+                <div class="campo">
                     <label for="endereco">Endereço da festa</label>
-                    <textarea class="form-control" id="endereco" name="endereco" rows="2" required maxlength="500"
+                    <textarea id="endereco" name="endereco" rows="2" required maxlength="500" autocomplete="street-address"
                               placeholder="Rua, número, bairro, cidade">{{ dados.endereco }}</textarea>
                 </div>
-                <div class="mb-3">
-                    <label for="observacoes">Observações (opcional)</label>
-                    <textarea class="form-control" id="observacoes" name="observacoes" rows="2" maxlength="1000"
+                <div class="campo">
+                    <label for="observacoes">Observações <span style="font-weight:400;color:var(--texto-2)">(opcional)</span></label>
+                    <textarea id="observacoes" name="observacoes" rows="2" maxlength="1000"
                               placeholder="Ex.: tema da festa, quantidade de crianças">{{ dados.observacoes }}</textarea>
                 </div>
+                <p class="nota"><svg class="icone"><use href="#i-relogio"/></svg>
+                    Os valores ficam garantidos por {{ validade_dias }} dias. A disponibilidade da data é confirmada pela nossa equipe.</p>
 
-                <p class="small text-muted mb-2">
-                    <i class="fas fa-clock me-1"></i>Os valores ficam garantidos por {{ validade_dias }} dias.
-                    A disponibilidade da data é confirmada pela nossa equipe.
-                </p>
-                <button type="submit" class="btn w-100 py-2 fw-semibold text-white" style="background: var(--cor); border-radius: 12px;" id="btnEnviarPedido">
-                    Enviar pedido
-                </button>
+                <div class="folha-rodape" style="position: sticky; bottom: 0; margin: 12px -16px 0;">
+                    <button type="submit" class="btn-enviar" id="btnEnviarPedido">Enviar pedido</button>
+                </div>
             </form>
         </div>
     </div>
@@ -231,9 +389,11 @@
     <script>
     (function () {
         const CHAVE = 'carrinho_{{ token|escapejs }}';
+        const $ = (id) => document.getElementById(id);
         const reais = (n) => n.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL', maximumFractionDigits: 0 });
+        const svg = (id) => '<svg class="icone"><use href="#' + id + '"/></svg>';
 
-        // Catálogo: dados de cada item, lidos dos cards
+        // Dados de cada item, lidos dos cards
         const itens = {};
         document.querySelectorAll('.card-item[data-id]').forEach(function (card) {
             itens[card.dataset.id] = {
@@ -243,23 +403,40 @@
             };
         });
 
-        // Carrinho guardado no aparelho (some se o navegador bloquear o armazenamento)
+        // Carrinho guardado no aparelho (se o navegador bloquear, funciona só nesta visita)
         let carrinho = {};
         try { carrinho = JSON.parse(localStorage.getItem(CHAVE) || '{}') || {}; } catch (e) { carrinho = {}; }
         Object.keys(carrinho).forEach(function (id) { if (!itens[id] || !(carrinho[id] > 0)) delete carrinho[id]; });
         const salvar = () => { try { localStorage.setItem(CHAVE, JSON.stringify(carrinho)); } catch (e) {} };
 
+        let tempoAviso;
+        function avisar(texto) {
+            const el = $('aviso');
+            el.innerHTML = svg('i-check') + texto;
+            el.classList.add('visivel');
+            clearTimeout(tempoAviso);
+            tempoAviso = setTimeout(() => el.classList.remove('visivel'), 1400);
+        }
+
         function alterar(id, delta) {
-            const qtd = Math.min(20, Math.max(0, (carrinho[id] || 0) + delta));
+            const antes = carrinho[id] || 0;
+            const qtd = Math.min(20, Math.max(0, antes + delta));
             if (qtd) carrinho[id] = qtd; else delete carrinho[id];
             salvar();
             desenhar();
+            if (!antes && qtd) avisar('Adicionado ao pedido');
+            const barra = $('barraCarrinho');
+            barra.classList.remove('pulo'); void barra.offsetWidth; barra.classList.add('pulo');
         }
 
-        function stepperHTML(id) {
-            return '<div class="stepper"><button type="button" data-menos="' + id + '" aria-label="Diminuir">−</button>' +
-                   '<span>' + carrinho[id] + '</span>' +
-                   '<button type="button" data-mais="' + id + '" aria-label="Aumentar">+</button></div>';
+        function controleHTML(id) {
+            if (!carrinho[id]) {
+                return '<button type="button" class="btn-add" data-mais="' + id + '">' + svg('i-mais') + 'Adicionar</button>';
+            }
+            return '<div class="stepper">' +
+                '<button type="button" data-menos="' + id + '" aria-label="Diminuir">' + svg('i-menos') + '</button>' +
+                '<output aria-label="Quantidade">' + carrinho[id] + '</output>' +
+                '<button type="button" data-mais="' + id + '" aria-label="Aumentar">' + svg('i-mais') + '</button></div>';
         }
 
         function totais() {
@@ -267,62 +444,70 @@
             let qtd = 0, cheio = 0, pix = 0;
             Object.keys(carrinho).forEach(function (id) {
                 const it = itens[id], q = carrinho[id];
-                qtd += q;
-                cheio += it.valor * q;
-                pix += it.valor * q * (100 - it.desconto) / 100;
+                qtd += q; cheio += it.valor * q; pix += it.valor * q * (100 - it.desconto) / 100;
             });
             return { qtd: qtd, cheio: Math.round(cheio), pix: Math.round(pix) };
         }
 
         function desenhar() {
-            document.querySelectorAll('[data-controle]').forEach(function (el) {
-                const id = el.dataset.controle;
-                el.innerHTML = carrinho[id]
-                    ? stepperHTML(id)
-                    : '<button type="button" class="btn-add" data-mais="' + id + '"><i class="fas fa-plus me-1"></i>Adicionar</button>';
-            });
+            document.querySelectorAll('[data-controle]').forEach(function (el) { el.innerHTML = controleHTML(el.dataset.controle); });
 
-            const t = totais();
-            const temItens = t.qtd > 0;
-            document.getElementById('barraCarrinho').hidden = !temItens;
-            const whats = document.getElementById('btnWhatsapp');
-            if (whats) whats.hidden = temItens;
-            document.getElementById('barraQtd').textContent = t.qtd + (t.qtd === 1 ? ' item' : ' itens');
-            document.getElementById('barraTotal').textContent = reais(t.cheio);
-            document.getElementById('barraPix').textContent = t.pix < t.cheio ? reais(t.pix) + ' no PIX à vista' : '';
+            const t = totais(), temItens = t.qtd > 0;
+            $('barraCarrinho').hidden = !temItens;
+            if ($('btnWhatsapp')) $('btnWhatsapp').hidden = temItens;
+            $('barraQtd').textContent = t.qtd;
+            $('barraTotal').textContent = reais(t.cheio);
+            $('barraPix').textContent = t.pix < t.cheio ? reais(t.pix) + ' no PIX' : '';
 
-            const lista = document.getElementById('listaPedido');
-            lista.innerHTML = temItens ? '' : '<p class="text-muted small my-2">Seu carrinho está vazio. Adicione itens do catálogo.</p>';
+            const lista = $('listaPedido');
+            lista.innerHTML = temItens ? '' : '<p class="nota" style="margin:8px 0">Seu pedido está vazio. Adicione itens do catálogo.</p>';
             Object.keys(carrinho).forEach(function (id) {
                 const linha = document.createElement('div');
                 linha.className = 'linha-pedido';
                 const nome = document.createElement('div');
                 nome.textContent = itens[id].nome;
                 linha.appendChild(nome);
-                linha.insertAdjacentHTML('beforeend', stepperHTML(id));
+                const ctl = document.createElement('div');
+                ctl.innerHTML = controleHTML(id);
+                linha.appendChild(ctl);
                 lista.appendChild(linha);
             });
-            document.getElementById('painelTotal').textContent = reais(t.cheio);
-            document.getElementById('painelPix').textContent = reais(t.pix);
-            document.getElementById('painelPixLinha').hidden = !(t.pix < t.cheio);
-            document.getElementById('btnEnviarPedido').disabled = !temItens;
+            $('painelTotal').textContent = reais(t.cheio);
+            $('painelPix').textContent = reais(t.pix);
+            $('painelPixLinha').hidden = !(t.pix < t.cheio);
+            $('btnEnviarPedido').disabled = !temItens;
+        }
+
+        // Folhas (painéis que sobem de baixo)
+        function abrirFolha(id) { $(id).classList.add('aberto'); document.body.classList.add('travado'); }
+        function fecharFolhas() {
+            document.querySelectorAll('.folha-fundo.aberto').forEach((f) => f.classList.remove('aberto'));
+            document.body.classList.remove('travado');
+            $('detalheControle').removeAttribute('data-controle');
         }
 
         document.addEventListener('click', function (e) {
             const mais = e.target.closest('[data-mais]');
             const menos = e.target.closest('[data-menos]');
-            if (mais) alterar(mais.dataset.mais, 1);
-            if (menos) alterar(menos.dataset.menos, -1);
+            const abrir = e.target.closest('[data-abrir]');
+            if (mais) return alterar(mais.dataset.mais, 1);
+            if (menos) return alterar(menos.dataset.menos, -1);
+            if (abrir) {
+                const id = abrir.dataset.abrir;
+                $('detalheConteudo').replaceChildren(document.querySelector('[data-detalhe="' + id + '"]').content.cloneNode(true));
+                $('detalheControle').dataset.controle = id;
+                desenhar();
+                return abrirFolha('painelItem');
+            }
+            if (e.target.closest('[data-fechar]') || e.target.classList.contains('folha-fundo')) fecharFolhas();
         });
-
-        const painel = document.getElementById('painelPedido');
-        document.getElementById('btnAbrirPedido').addEventListener('click', () => painel.classList.add('aberto'));
-        document.getElementById('btnFecharPedido').addEventListener('click', () => painel.classList.remove('aberto'));
-        painel.addEventListener('click', (e) => { if (e.target === painel) painel.classList.remove('aberto'); });
+        document.addEventListener('keydown', (e) => { if (e.key === 'Escape') fecharFolhas(); });
+        $('btnAbrirPedido').addEventListener('click', () => { fecharFolhas(); abrirFolha('painelPedido'); });
+        if ($('painelPedido').classList.contains('aberto')) document.body.classList.add('travado');
 
         // No envio, o carrinho vira campos item_<id>=quantidade
-        document.getElementById('formPedido').addEventListener('submit', function (e) {
-            const campos = document.getElementById('camposItens');
+        $('formPedido').addEventListener('submit', function (e) {
+            const campos = $('camposItens');
             campos.innerHTML = '';
             Object.keys(carrinho).forEach(function (id) {
                 const input = document.createElement('input');
@@ -330,9 +515,25 @@
                 campos.appendChild(input);
             });
             if (!campos.children.length) { e.preventDefault(); return; }
-            document.getElementById('btnEnviarPedido').disabled = true;
-            document.getElementById('btnEnviarPedido').textContent = 'Enviando...';
+            $('btnEnviarPedido').disabled = true;
+            $('btnEnviarPedido').textContent = 'Enviando...';
         });
+
+        // Destaca a categoria visível no menu do topo
+        const links = document.querySelectorAll('[data-categoria]');
+        if ('IntersectionObserver' in window && links.length) {
+            const observador = new IntersectionObserver(function (entradas) {
+                entradas.forEach(function (en) {
+                    if (!en.isIntersecting) return;
+                    links.forEach(function (a) {
+                        const ativa = a.dataset.categoria === en.target.id;
+                        a.classList.toggle('ativa', ativa);
+                        if (ativa) a.scrollIntoView({ inline: 'center', block: 'nearest', behavior: 'smooth' });
+                    });
+                });
+            }, { rootMargin: '-80px 0px -65% 0px' });
+            document.querySelectorAll('.secao').forEach((s) => observador.observe(s));
+        }
 
         desenhar();
     })();
