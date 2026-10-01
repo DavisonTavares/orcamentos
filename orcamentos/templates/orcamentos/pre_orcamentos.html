@@ -1,0 +1,126 @@
+{% extends "base.html" %}
+
+{% block title %}Pedidos do Catálogo - Mundo Kids{% endblock %}
+
+{% block content %}
+<div class="container py-4">
+    <div class="d-flex flex-wrap justify-content-between align-items-center gap-3 mb-3">
+        <div>
+            <h1 class="h2 mb-1"><i class="fas fa-shopping-cart me-2"></i>Pedidos do Catálogo</h1>
+            <p class="text-muted mb-0">Pré-orçamentos enviados pelos clientes no catálogo online. Confira e gere o orçamento.</p>
+        </div>
+        <a href="{% url 'orcamentos:links_catalogo' %}" class="btn btn-outline-secondary">
+            <i class="fas fa-store me-2"></i>Links do catálogo
+        </a>
+    </div>
+
+    <ul class="nav nav-pills mb-3">
+        {% for chave, nome, n in abas %}
+        <li class="nav-item">
+            <a class="nav-link {% if chave == status %}active{% endif %}" href="?status={{ chave }}">
+                {{ nome }} <span class="badge {% if chave == status %}bg-light text-dark{% else %}bg-secondary{% endif %} ms-1">{{ n }}</span>
+            </a>
+        </li>
+        {% endfor %}
+    </ul>
+
+    {% for pre in pres %}
+    <div class="card shadow-sm border-0 mb-3">
+        <div class="card-body">
+            <div class="d-flex flex-wrap justify-content-between gap-2 mb-2">
+                <div>
+                    <h5 class="mb-0">#{{ pre.id }} · {{ pre.nome }}</h5>
+                    <div class="small text-muted">
+                        <i class="fab fa-whatsapp me-1"></i>{{ pre.telefone }}
+                        · {{ pre.tipo_evento }}
+                        · recebido em {{ pre.criado_em|date:"d/m/Y H:i" }}
+                    </div>
+                </div>
+                <div class="text-end">
+                    {% if pre.status == 'novo' %}
+                        {% if pre.vencido %}
+                        <span class="badge bg-secondary">Vencido em {{ pre.validade_ate|date:"d/m H:i" }}</span>
+                        {% else %}
+                        <span class="badge bg-success">Válido até {{ pre.validade_ate|date:"d/m H:i" }}</span>
+                        {% endif %}
+                    {% elif pre.status == 'convertido' and pre.orcamento %}
+                        <a href="{% url 'orcamentos:detalhes_orcamento' pre.orcamento.id %}" class="badge bg-primary text-decoration-none">Orçamento #{{ pre.orcamento.id }}</a>
+                    {% endif %}
+                </div>
+            </div>
+
+            <div class="row g-3">
+                <div class="col-md-6">
+                    <div class="small fw-semibold text-muted mb-1">Festa</div>
+                    <div><i class="fas fa-calendar me-1 text-muted"></i>{{ pre.data_evento|date:"d/m/Y (l)" }} às {{ pre.hora_evento|time:"H:i" }} · {{ pre.periodo_evento }}h</div>
+                    <div class="small"><i class="fas fa-map-marker-alt me-1 text-muted"></i>{{ pre.endereco }}</div>
+                    {% if pre.observacoes %}<div class="small mt-1"><i class="fas fa-comment me-1 text-muted"></i>{{ pre.observacoes }}</div>{% endif %}
+
+                    {% if pre.status == 'novo' %}
+                    <div class="mt-2">
+                        {% if pre.itens_reservados %}
+                        <div class="alert alert-danger py-1 px-2 small mb-1">
+                            <i class="fas fa-exclamation-triangle me-1"></i>Já reservado nessa data: {{ pre.itens_reservados|join:", " }}
+                        </div>
+                        {% endif %}
+                        {% if pre.eventos_no_dia %}
+                        <div class="alert alert-warning py-1 px-2 small mb-0">
+                            <i class="fas fa-calendar-check me-1"></i>{{ pre.eventos_no_dia }} evento{{ pre.eventos_no_dia|pluralize }} já agendado{{ pre.eventos_no_dia|pluralize }} nesse dia
+                        </div>
+                        {% else %}
+                        <div class="small text-success"><i class="fas fa-check-circle me-1"></i>Nenhum evento agendado nesse dia</div>
+                        {% endif %}
+                    </div>
+                    {% endif %}
+                </div>
+                <div class="col-md-6">
+                    <div class="small fw-semibold text-muted mb-1">Itens</div>
+                    {% for item in pre.itens.all %}
+                    <div class="d-flex justify-content-between small border-bottom py-1">
+                        <span>{{ item.quantidade }}x {{ item.nome }}</span>
+                        <span>R$ {{ item.valor_unitario|floatformat:"0g" }}</span>
+                    </div>
+                    {% endfor %}
+                    <div class="d-flex justify-content-between fw-bold mt-1">
+                        <span>Total</span><span>R$ {{ pre.total_sem_desconto|floatformat:"0g" }}</span>
+                    </div>
+                    {% if pre.total < pre.total_sem_desconto %}
+                    <div class="d-flex justify-content-between small text-success">
+                        <span>No PIX à vista</span><span>R$ {{ pre.total|floatformat:"0g" }}</span>
+                    </div>
+                    {% endif %}
+                </div>
+            </div>
+
+            {% if pre.status == 'novo' %}
+            <div class="d-flex flex-wrap gap-2 mt-3">
+                <form method="post" action="{% url 'orcamentos:pre_orcamento_acao' pre.id %}"
+                      {% if pre.vencido %}onsubmit="return confirm('Este pedido está vencido. O orçamento será gerado com os preços atuais. Continuar?')"{% endif %}>
+                    {% csrf_token %}
+                    <input type="hidden" name="acao" value="gerar">
+                    <button type="submit" class="btn btn-success">
+                        <i class="fas fa-file-invoice me-1"></i>Gerar orçamento
+                    </button>
+                </form>
+                <a class="btn btn-outline-success" target="_blank" rel="noopener"
+                   href="https://wa.me/55{{ pre.telefone|cut:' '|cut:'('|cut:')'|cut:'-' }}?text={{ 'Olá! Recebemos seu pedido #'|urlencode }}{{ pre.id }}{{ ' pelo catálogo e já estamos conferindo a disponibilidade 😊'|urlencode }}">
+                    <i class="fab fa-whatsapp me-1"></i>Falar com o cliente
+                </a>
+                <form method="post" action="{% url 'orcamentos:pre_orcamento_acao' pre.id %}"
+                      onsubmit="return confirm('Descartar o pedido #{{ pre.id }}?')">
+                    {% csrf_token %}
+                    <input type="hidden" name="acao" value="descartar">
+                    <button type="submit" class="btn btn-outline-danger"><i class="fas fa-times me-1"></i>Descartar</button>
+                </form>
+            </div>
+            {% endif %}
+        </div>
+    </div>
+    {% empty %}
+    <div class="text-center text-muted py-5">
+        <i class="fas fa-inbox fa-3x mb-3"></i>
+        <p class="mb-0">Nenhum pedido {% if status == 'novo' %}novo{% elif status == 'convertido' %}convertido{% else %}descartado{% endif %}.</p>
+    </div>
+    {% endfor %}
+</div>
+{% endblock %}

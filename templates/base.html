@@ -188,6 +188,12 @@
                         </a>
                     </li>
                     <li class="nav-item">
+                        <a class="nav-link {% if request.resolver_match.url_name == 'pre_orcamentos' %}active{% endif %}" href="{% url 'orcamentos:pre_orcamentos' %}">
+                            <i class="fas fa-shopping-cart me-1"></i> Pedidos
+                            {% if pedidos_catalogo_novos %}<span class="badge rounded-pill bg-danger ms-1">{{ pedidos_catalogo_novos }}</span>{% endif %}
+                        </a>
+                    </li>
+                    <li class="nav-item">
                         <a class="nav-link {% if 'cliente' in request.resolver_match.url_name %}active{% endif %}" href="{% url 'orcamentos:lista_clientes' %}">
                             <i class="fas fa-users me-1"></i> Clientes
                         </a>

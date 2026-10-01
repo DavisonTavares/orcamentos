@@ -8,4 +8,6 @@ urlpatterns = [
     path('<str:token>/', views.catalogo_publico, name='publico'),
     path('<str:token>/foto/<int:item_id>/', views.catalogo_foto, name='foto'),
     path('<str:token>/logo/', views.catalogo_logo, name='logo'),
+    path('<str:token>/pedido/', views.catalogo_pedido, name='pedido'),
+    path('<str:token>/pedido/<str:codigo>/', views.catalogo_pedido_enviado, name='pedido_enviado'),
 ]

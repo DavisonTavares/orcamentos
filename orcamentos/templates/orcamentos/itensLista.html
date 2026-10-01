@@ -69,11 +69,16 @@
 
     <div class="row">
         {% for item in itens %}
-        <div class="col-md-6 col-lg-4 mb-3">
+        <div class="col-md-6 col-lg-4 mb-3" id="item-{{ item.id }}">
             <div class="item-card">
-                <div class="d-flex justify-content-between align-items-start mb-2">
+                <div class="d-flex justify-content-between align-items-start mb-2 gap-2">
                     <h6 class="mb-0">{{ item.nome|default:item.descricao|truncatewords:5 }}</h6>
-                    <span class="categoria-badge">{{ item.get_categoria_display }}</span>
+                    <div class="d-flex flex-wrap justify-content-end gap-1">
+                        {% if item.inflavel %}
+                        <span class="badge bg-info text-dark" title="Leva: {{ kit_inflavel|join:', ' }}"><i class="fas fa-wind me-1"></i>Inflável</span>
+                        {% endif %}
+                        <span class="categoria-badge">{{ item.get_categoria_display }}</span>
+                    </div>
                 </div>
                 
                 <p class="text-muted small mb-2">{{ item.descricao|truncatewords:10 }}</p>
@@ -93,9 +98,16 @@
                 </div>
                 {% endif %}
                 
-                <div class="d-flex gap-2">
+                <div class="d-flex flex-wrap gap-2">
                     <a href="{% url 'orcamentos:editar_item' item.id %}" class="btn btn-sm btn-outline-primary">Editar</a>
-                    <a href="#" class="btn btn-sm btn-outline-danger">Excluir</a>
+                    <form method="post" action="{% url 'orcamentos:alternar_inflavel' item.id %}" class="d-inline">
+                        {% csrf_token %}
+                        <button type="submit" class="btn btn-sm {% if item.inflavel %}btn-info{% else %}btn-outline-info{% endif %}"
+                                title="{% if item.inflavel %}Desmarcar como inflável{% else %}Marcar como inflável (inclui {{ kit_inflavel|join:', ' }} no checklist){% endif %}">
+                            <i class="fas fa-wind me-1"></i>{% if item.inflavel %}Inflável ✓{% else %}Inflável?{% endif %}
+                        </button>
+                    </form>
+                    <a href="{% url 'orcamentos:excluir_item' item.id %}" class="btn btn-sm btn-outline-danger">Excluir</a>
                 </div>
 
                 <div class="mt-3">

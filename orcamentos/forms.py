@@ -51,7 +51,7 @@ class ItemForm(forms.ModelForm):
     class Meta:
         model = Item
         fields = ['nome', 'descricao', 'valor_unitario', 'desconto', 'categoria', 'disponivel', 'investimento', 'custo_fixo', 'percentual_lucro',
-                  'exibir_catalogo']
+                  'exibir_catalogo', 'inflavel']
         widgets = {
             'nome': forms.TextInput(attrs={
                 'class': 'form-control',

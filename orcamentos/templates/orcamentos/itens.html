@@ -360,6 +360,17 @@
                                 estacas, soprador, lona). Usados para montar a lista de conferência em PDF
                                 na hora de separar o material para o evento.
                             </p>
+                            <div class="form-check form-switch mb-3 p-3 ps-5 rounded" style="background: #F0F9FF;">
+                                <input class="form-check-input" type="checkbox" name="inflavel" id="inflavel"
+                                       {% if form.inflavel.value %}checked{% endif %}>
+                                <label class="form-check-label fw-semibold" for="inflavel">
+                                    Brinquedo inflável
+                                </label>
+                                <div class="form-text mt-1">
+                                    Inclui automaticamente no checklist: <strong>{{ kit_inflavel|join:", " }}</strong>.
+                                    Não precisa digitar esses itens abaixo.
+                                </div>
+                            </div>
                             <div id="checklistContainer">
                                 {% for checklist_item in checklist_itens %}
                                 <div class="checklist-row d-flex gap-2 mb-2">

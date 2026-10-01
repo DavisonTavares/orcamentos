@@ -635,7 +635,7 @@ def gerar_checklist_conferencia_pdf(orcamento, saida_pdf: str) -> str:
             nova_pagina()
 
     # --- Um bloco por item do orçamento, com seu checklist ---
-    itens_orcamento = list(orcamento.itens.select_related('item').all())
+    itens_orcamento = list(orcamento.itens.select_related('item').prefetch_related('item__checklist_itens').all())
 
     if not itens_orcamento:
         c.setFont("Helvetica", 10)
@@ -644,7 +644,8 @@ def gerar_checklist_conferencia_pdf(orcamento, saida_pdf: str) -> str:
 
     for oi in itens_orcamento:
         item = oi.item
-        checklist = list(item.checklist_itens.all())
+        # Kit dos infláveis (lona, extensão, soprador) + checklist próprio do item
+        checklist = item.itens_conferencia()
 
         checar_espaco(20 * mm)
 
@@ -664,7 +665,7 @@ def gerar_checklist_conferencia_pdf(orcamento, saida_pdf: str) -> str:
             y_position -= 8 * mm
         else:
             c.setFont("Helvetica", 9)
-            for chk in checklist:
+            for descricao in checklist:
                 checar_espaco(7 * mm)
                 box_size = 3.5 * mm
                 box_y = y_position - box_size + 1
@@ -672,7 +673,7 @@ def gerar_checklist_conferencia_pdf(orcamento, saida_pdf: str) -> str:
                 c.setLineWidth(0.8)
                 c.rect(margin_left + 4 * mm, box_y, box_size, box_size, stroke=1, fill=0)
                 c.setFillColor(HexColor(COLORS["dark"]))
-                c.drawString(margin_left + 4 * mm + box_size + 3 * mm, y_position - box_size + 1.2 * mm, chk.descricao)
+                c.drawString(margin_left + 4 * mm + box_size + 3 * mm, y_position - box_size + 1.2 * mm, descricao)
                 y_position -= 7 * mm
 
         y_position -= 4 * mm  # espaço entre itens

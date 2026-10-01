@@ -1,4 +1,5 @@
 import secrets
+import unicodedata
 from decimal import Decimal, ROUND_HALF_UP
 from django.db import models
 from django.utils import timezone
@@ -60,6 +61,16 @@ class Cliente(models.Model):
         verbose_name_plural = "Clientes"
 
 
+# Acessórios que todo brinquedo inflável leva (entram automaticamente na
+# lista de conferência dos itens marcados como "inflável")
+KIT_INFLAVEL = ['Lona de proteção', 'Extensão elétrica', 'Motor soprador']
+
+
+def _normalizar_texto(texto):
+    sem_acento = unicodedata.normalize('NFKD', texto or '').encode('ascii', 'ignore').decode()
+    return ' '.join(sem_acento.lower().split())
+
+
 class Item(models.Model):
     CATEGORIA_CHOICES = [
         ('brinquedo', 'Brinquedo'),
@@ -84,6 +95,22 @@ class Item(models.Model):
     # Foto do catálogo online, guardada no banco (funciona também no Vercel)
     foto = models.ForeignKey(ImagemArmazenada, on_delete=models.SET_NULL, null=True, blank=True, related_name='+')
     exibir_catalogo = models.BooleanField(default=True)  # aparece no catálogo online enviado aos clientes
+    inflavel = models.BooleanField(default=False)  # leva o KIT_INFLAVEL na lista de conferência
+
+    def itens_conferencia(self):
+        """
+        O que separar para este item na lista de conferência: o kit padrão dos
+        infláveis (se for inflável) + o checklist próprio do item, sem repetir
+        o que já estiver no kit (comparação sem acento/maiúsculas, então
+        "EXTENSÂO ELÉTRICA" digitado à mão não duplica a "Extensão elétrica").
+        """
+        itens = list(KIT_INFLAVEL) if self.inflavel else []
+        vistos = {_normalizar_texto(t) for t in itens}
+        for chk in self.checklist_itens.all():
+            if _normalizar_texto(chk.descricao) not in vistos:
+                vistos.add(_normalizar_texto(chk.descricao))
+                itens.append(chk.descricao)
+        return itens
 
     def __str__(self):
         return self.descricao
@@ -235,3 +262,69 @@ class OrcamentoItem(models.Model):
     class Meta:
         verbose_name = "Item do Orçamento"
         verbose_name_plural = "Itens do Orçamento"
+
+# Por quantos dias o pré-orçamento do catálogo garante os preços
+VALIDADE_PRE_ORCAMENTO_DIAS = 3
+
+
+class PreOrcamento(models.Model):
+    """
+    Pedido feito pelo cliente no catálogo online (carrinho + dados da festa).
+    Fica separado dos orçamentos — não entra na agenda, relatórios nem na
+    verificação de conflito — até a equipe conferir e gerar o orçamento de
+    fato. Os preços ficam travados por VALIDADE_PRE_ORCAMENTO_DIAS dias.
+    """
+    STATUS_CHOICES = [
+        ('novo', 'Novo'),
+        ('convertido', 'Orçamento gerado'),
+        ('descartado', 'Descartado'),
+    ]
+    empresa = models.ForeignKey(Empresa, on_delete=models.CASCADE, related_name='pre_orcamentos')
+    link = models.ForeignKey(LinkCatalogo, on_delete=models.SET_NULL, null=True, blank=True, related_name='pre_orcamentos')
+    codigo = models.CharField(max_length=32, unique=True, default=gerar_token_catalogo)  # URL da página de confirmação do cliente
+    tipo_evento = models.CharField(max_length=100)
+    cliente = models.ForeignKey(Cliente, on_delete=models.SET_NULL, null=True, blank=True, related_name='pre_orcamentos')
+    nome = models.CharField(max_length=100)
+    telefone = models.CharField(max_length=20)
+    data_evento = models.DateField()
+    hora_evento = models.TimeField()
+    periodo_evento = models.CharField(max_length=1, default='3')
+    endereco = models.TextField()
+    observacoes = models.TextField(blank=True)
+    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='novo')
+    criado_em = models.DateTimeField(auto_now_add=True)
+    validade_ate = models.DateTimeField()
+    orcamento = models.ForeignKey(Orcamento, on_delete=models.SET_NULL, null=True, blank=True, related_name='+')
+
+    @property
+    def vencido(self):
+        return self.status == 'novo' and timezone.now() > self.validade_ate
+
+    @property
+    def total(self):
+        """Total com os descontos dos itens (valor no PIX à vista)."""
+        return calcular_total(((i.valor_unitario, i.quantidade, i.desconto) for i in self.itens.all()), 0, 0)
+
+    @property
+    def total_sem_desconto(self):
+        return calcular_total(((i.valor_unitario, i.quantidade, 0) for i in self.itens.all()), 0, 0)
+
+    def __str__(self):
+        return f"Pré-orçamento #{self.pk} - {self.nome}"
+
+    class Meta:
+        verbose_name = "Pré-orçamento"
+        verbose_name_plural = "Pré-orçamentos"
+        ordering = ['-criado_em']
+
+
+class PreOrcamentoItem(models.Model):
+    pre_orcamento = models.ForeignKey(PreOrcamento, on_delete=models.CASCADE, related_name='itens')
+    item = models.ForeignKey(Item, on_delete=models.SET_NULL, null=True, blank=True)
+    nome = models.CharField(max_length=200)  # cópia, para o pedido continuar legível se o item mudar
+    quantidade = models.PositiveIntegerField(default=1)
+    valor_unitario = models.DecimalField(max_digits=10, decimal_places=2)  # preço do tipo de evento, travado no pedido
+    desconto = models.DecimalField(max_digits=5, decimal_places=2, default=0)  # % de desconto do item (PIX à vista)
+
+    def __str__(self):
+        return f"{self.quantidade}x {self.nome}"

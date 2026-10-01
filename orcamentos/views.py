@@ -10,6 +10,7 @@ from django.core.paginator import Paginator
 from django.db.models import Q, Sum, Count, Max, F
 from django.utils import timezone
 from django.conf import settings
+from django.core.cache import cache
 from datetime import timedelta, datetime
 from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
 from django.utils.http import url_has_allowed_host_and_scheme
@@ -18,7 +19,8 @@ import json
 import unicodedata
 
 from .models import (
-    Cliente, Item, Orcamento, OrcamentoItem, ChecklistItem, LinkCatalogo, TIPOS_EVENTO,
+    Cliente, Item, Orcamento, OrcamentoItem, ChecklistItem, LinkCatalogo, TIPOS_EVENTO, KIT_INFLAVEL,
+    PreOrcamento, PreOrcamentoItem, VALIDADE_PRE_ORCAMENTO_DIAS,
     arredondar_total, calcular_total,
 )
 from accounts.models import Empresa, Usuario
@@ -27,7 +29,7 @@ from accounts.imagens import responder_imagem
 from .utils import gerar_arquivos, gerar_catalogo, gerar_checklist_conferencia, gerar_recibo, gerar_resumo_festas
 from whatsapp.views import (
     AVISO_NOTA_FISCAL, INTERVALO_ENVIO_EVENTOS, enviar_em_segundo_plano, eventos_em_aberto,
-    formatar_reais, mensagem_pagamento_recebido, status_envio_eventos,
+    formatar_reais, mensagem_pagamento_recebido, normalizar_telefone, status_envio_eventos,
 )
 
 # Decorator personalizado para verificar se o usuário tem acesso à empresa
@@ -1114,19 +1116,36 @@ def novo_cliente(request):
 # Views para Itens (filtrados por empresa)
 @login_required
 def lista_itens(request):
-    itens = Item.objects.filter(empresa=request.user.empresa)
-    #buscando a quantidade de orçamentos confirmados ou concluídos que possuem cada item
-    for item in itens:        
-        item.uso_count = OrcamentoItem.objects.filter(
-            item=item,
-            orcamento__empresa=request.user.empresa,
-            orcamento__status__in=['confirmado', 'concluido']
-        ).count()  
+    # Quantidade de orçamentos confirmados ou concluídos que usam cada item,
+    # calculada pelo banco numa única consulta (antes era uma consulta por item)
+    itens = Item.objects.filter(empresa=request.user.empresa).annotate(
+        uso_count=Count(
+            'orcamentoitem',
+            filter=Q(orcamentoitem__orcamento__status__in=['confirmado', 'concluido']),
+        )
+    ).order_by('nome', 'descricao')
+    for item in itens:
         # (35/100) é int/int em Python 3, que dá float — e Decimal não pode
         # ser multiplicado por float diretamente. Por isso usamos Decimal('0.35').
         item.faturamento = (item.uso_count * item.valor_unitario) - ((item.uso_count * item.valor_unitario) * Decimal('0.35') if item.desconto else 0)
-    
-    return render(request, "orcamentos/itensLista.html", {"itens": itens})
+
+    return render(request, "orcamentos/itensLista.html", {"itens": itens, "kit_inflavel": KIT_INFLAVEL})
+
+
+@login_required
+@acesso_empresa_required
+@require_http_methods(["POST"])
+def alternar_inflavel(request, item_id):
+    """Botão da lista de itens: marca/desmarca o item como inflável."""
+    item = get_object_or_404(Item.objects.filter(empresa=request.user.empresa), id=item_id)
+    item.inflavel = not item.inflavel
+    item.save(update_fields=['inflavel'])
+    nome = item.nome or item.descricao
+    if item.inflavel:
+        messages.success(request, f'"{nome}" marcado como inflável: o kit ({", ".join(KIT_INFLAVEL)}) entra no checklist.')
+    else:
+        messages.info(request, f'"{nome}" não é mais inflável.')
+    return redirect(f"{reverse('orcamentos:lista_itens')}#item-{item.id}")
 
 def salvar_checklist_item(request, item):
     """
@@ -1156,7 +1175,7 @@ def novo_item(request):
     else:
         form = ItemForm()
 
-    return render(request, "orcamentos/itens.html", {"form": form})
+    return render(request, "orcamentos/itens.html", {"form": form, "kit_inflavel": KIT_INFLAVEL})
 
 @login_required
 def editar_item(request, item_id):
@@ -1177,6 +1196,7 @@ def editar_item(request, item_id):
         "form": form,
         "item": item,
         "checklist_itens": item.checklist_itens.all(),
+        "kit_inflavel": KIT_INFLAVEL,
     })
 
 @login_required
@@ -1696,22 +1716,23 @@ def _itens_catalogo(empresa):
     return Item.objects.filter(empresa=empresa, exibir_catalogo=True, disponivel=True)
 
 
-def catalogo_publico(request, token):
+def _preco_catalogo(item, tipo_evento):
     """
-    Catálogo aberto (sem login) enviado ao cliente. Mostra os preços do tipo
-    de evento do link — e só dele; o nome do tipo não aparece na página.
+    Preço do item no catálogo para o tipo de evento: (valor, desconto_%, valor_pix).
+    Mesmo cálculo do orçamento, arredondado em reais inteiros. Usado pela
+    página e pelo pedido, para o valor gravado ser sempre o que o cliente viu.
     """
-    link = _link_ativo_ou_404(token)
-    empresa = link.empresa
-    LinkCatalogo.objects.filter(pk=link.pk).update(acessos=F('acessos') + 1)
+    valor = arredondar_total(valor_item_com_ajuste(item, tipo_evento))
+    desconto = item.desconto or Decimal('0')
+    valor_pix = arredondar_total(valor * (Decimal('100') - desconto) / Decimal('100')) if desconto > 0 else None
+    return valor, desconto, valor_pix
 
+
+def _render_catalogo(request, link, erros=None, dados=None, status=200):
+    empresa = link.empresa
     secoes = {chave: [] for chave, _ in SECOES_CATALOGO}
     for item in _itens_catalogo(empresa).order_by('nome', 'descricao'):
-        # Mesmo preço que o orçamento usaria para esse tipo de evento,
-        # arredondado em reais inteiros como o total dos orçamentos
-        valor = arredondar_total(valor_item_com_ajuste(item, link.tipo_evento))
-        desconto = item.desconto or Decimal('0')
-        valor_pix = arredondar_total(valor * (Decimal('100') - desconto) / Decimal('100')) if desconto > 0 else None
+        valor, desconto, valor_pix = _preco_catalogo(item, link.tipo_evento)
         nome = item.nome or item.descricao
         chave = 'combo' if 'combo' in _normalizar(nome) else item.categoria
         secoes.setdefault(chave, []).append({
@@ -1720,6 +1741,7 @@ def catalogo_publico(request, token):
             'descricao': item.descricao if item.nome and item.descricao != item.nome else '',
             'foto_id': item.foto_id,
             'valor': valor,
+            'desconto': desconto,
             'valor_pix': valor_pix,
         })
 
@@ -1729,12 +1751,26 @@ def catalogo_publico(request, token):
 
     return render(request, 'orcamentos/catalogo_publico.html', {
         'empresa': empresa,
-        'token': token,
+        'token': link.token,
         'logo_id': empresa.logo_img_id,
         'secoes': [(titulo, secoes[chave]) for chave, titulo in SECOES_CATALOGO if secoes.get(chave)],
         'whatsapp': whatsapp,
         'cor': empresa.cor_principal or '#2463EB',
-    })
+        'hoje': timezone.localdate().isoformat(),
+        'validade_dias': VALIDADE_PRE_ORCAMENTO_DIAS,
+        'erros': erros or [],
+        'dados': dados or {},
+    }, status=status)
+
+
+def catalogo_publico(request, token):
+    """
+    Catálogo aberto (sem login) enviado ao cliente. Mostra os preços do tipo
+    de evento do link — e só dele; o nome do tipo não aparece na página.
+    """
+    link = _link_ativo_ou_404(token)
+    LinkCatalogo.objects.filter(pk=link.pk).update(acessos=F('acessos') + 1)
+    return _render_catalogo(request, link)
 
 
 def _servir_foto(imagem):
@@ -1760,3 +1796,246 @@ def foto_item(request, item_id):
     """Foto do item para as telas internas."""
     item = get_object_or_404(Item.objects.filter(empresa=request.user.empresa).select_related('foto'), id=item_id)
     return _servir_foto(item.foto)
+
+
+# ========================== PEDIDOS DO CATÁLOGO (PRÉ-ORÇAMENTOS) ==========================
+
+LIMITE_PEDIDOS_POR_HORA = 5  # por aparelho/IP, contra spam
+PERIODOS_EVENTO = ['1', '2', '3', '4', '5', '6']
+
+
+def _ip_cliente(request):
+    encaminhado = request.META.get('HTTP_X_FORWARDED_FOR', '')
+    return encaminhado.split(',')[0].strip() or request.META.get('REMOTE_ADDR', '')
+
+
+def _formatar_telefone(numero):
+    """'83999990000' -> '(83) 99999-0000'"""
+    if len(numero) == 11:
+        return f"({numero[:2]}) {numero[2:7]}-{numero[7:]}"
+    if len(numero) == 10:
+        return f"({numero[:2]}) {numero[2:6]}-{numero[6:]}"
+    return numero
+
+
+def _cliente_por_telefone(empresa, nome, telefone):
+    """
+    Reaproveita o cliente com o mesmo telefone (comparando só os dígitos, no
+    mesmo formato do WhatsApp) para não criar duplicados; senão cadastra.
+    """
+    for cliente in Cliente.objects.filter(empresa=empresa).only('id', 'nome', 'telefone'):
+        if normalizar_telefone(cliente.telefone) == telefone:
+            return cliente
+    return Cliente.objects.create(empresa=empresa, nome=nome, telefone=_formatar_telefone(telefone))
+
+
+@require_http_methods(["POST"])
+def catalogo_pedido(request, token):
+    """Recebe o carrinho + dados da festa enviados pelo cliente no catálogo."""
+    link = _link_ativo_ou_404(token)
+    empresa = link.empresa
+    post = request.POST
+    dados = {campo: post.get(campo, '').strip() for campo in
+             ('nome', 'telefone', 'data_evento', 'hora_evento', 'periodo_evento', 'endereco', 'observacoes')}
+    erros = []
+
+    # Campo invisível: pessoas não veem nem preenchem; robôs costumam preencher
+    if post.get('website'):
+        return redirect('catalogo:publico', token=token)
+
+    chave_limite = f"catalogo_pedidos_{_ip_cliente(request)}"
+    if cache.get(chave_limite, 0) >= LIMITE_PEDIDOS_POR_HORA:
+        erros.append('Recebemos vários pedidos deste aparelho na última hora. Fale com a gente pelo WhatsApp. 😊')
+
+    # Itens do carrinho: campos item_<id>=quantidade
+    quantidades = {}
+    for chave, valor in post.items():
+        if chave.startswith('item_') and chave[5:].isdigit():
+            try:
+                qtd = int(valor)
+            except ValueError:
+                continue
+            if 1 <= qtd <= 20:
+                quantidades[int(chave[5:])] = qtd
+    itens = list(_itens_catalogo(empresa).filter(id__in=quantidades))
+    if not itens:
+        erros.append('Adicione pelo menos um item ao pedido.')
+
+    if len(dados['nome']) < 2:
+        erros.append('Informe o seu nome.')
+    telefone = normalizar_telefone(dados['telefone']) or ''
+    if len(telefone) not in (10, 11):
+        erros.append('Informe um WhatsApp válido, com DDD.')
+    data_evento = hora_evento = None
+    try:
+        data_evento = datetime.strptime(dados['data_evento'], '%Y-%m-%d').date()
+        hoje = timezone.localdate()
+        if not (hoje <= data_evento <= hoje + timedelta(days=730)):
+            erros.append('Escolha uma data de festa a partir de hoje.')
+    except ValueError:
+        erros.append('Informe a data da festa.')
+    try:
+        hora_evento = datetime.strptime(dados['hora_evento'], '%H:%M').time()
+    except ValueError:
+        erros.append('Informe o horário da festa.')
+    if dados['periodo_evento'] not in PERIODOS_EVENTO:
+        dados['periodo_evento'] = '3'
+    if len(dados['endereco']) < 5:
+        erros.append('Informe o endereço da festa.')
+
+    if erros:
+        return _render_catalogo(request, link, erros=erros, dados=dados, status=400)
+
+    cache.set(chave_limite, cache.get(chave_limite, 0) + 1, 3600)
+    pre = PreOrcamento.objects.create(
+        empresa=empresa,
+        link=link,
+        tipo_evento=link.tipo_evento,
+        cliente=_cliente_por_telefone(empresa, dados['nome'][:100], telefone),
+        nome=dados['nome'][:100],
+        telefone=_formatar_telefone(telefone),
+        data_evento=data_evento,
+        hora_evento=hora_evento,
+        periodo_evento=dados['periodo_evento'],
+        endereco=dados['endereco'][:500],
+        observacoes=dados['observacoes'][:1000],
+        validade_ate=timezone.now() + timedelta(days=VALIDADE_PRE_ORCAMENTO_DIAS),
+    )
+    novos_itens = []
+    for item in itens:
+        valor, desconto, _ = _preco_catalogo(item, link.tipo_evento)
+        novos_itens.append(PreOrcamentoItem(
+            pre_orcamento=pre, item=item, nome=item.nome or item.descricao,
+            quantidade=quantidades[item.id], valor_unitario=valor, desconto=desconto,
+        ))
+    PreOrcamentoItem.objects.bulk_create(novos_itens)
+    return redirect('catalogo:pedido_enviado', token=token, codigo=pre.codigo)
+
+
+def catalogo_pedido_enviado(request, token, codigo):
+    """Confirmação para o cliente (só quem tem o código do pedido vê)."""
+    pre = get_object_or_404(PreOrcamento.objects.select_related('empresa'), codigo=codigo, link__token=token)
+    empresa = pre.empresa
+    whatsapp = ''.join(c for c in (empresa.whatsapp or '') if c.isdigit())
+    if whatsapp and not whatsapp.startswith('55'):
+        whatsapp = '55' + whatsapp
+    return render(request, 'orcamentos/catalogo_pedido_enviado.html', {
+        'pre': pre,
+        'itens': pre.itens.all(),
+        'empresa': empresa,
+        'token': token,
+        'logo_id': empresa.logo_img_id,
+        'whatsapp': whatsapp,
+        'cor': empresa.cor_principal or '#2463EB',
+    })
+
+
+def _avisos_disponibilidade(empresa, pres):
+    """
+    Para cada pré-orçamento: quantos eventos já existem no dia e quais itens
+    do pedido já estão reservados nessa data (só para a equipe ver).
+    """
+    datas = {p.data_evento for p in pres}
+    eventos_por_dia = dict(
+        Orcamento.objects.filter(empresa=empresa, data_evento__in=datas, status__in=['confirmado', 'reagendar'])
+        .values_list('data_evento').annotate(n=Count('id'))
+    )
+    reservados = {}
+    for data, item_id in OrcamentoItem.objects.filter(
+        orcamento__empresa=empresa, orcamento__data_evento__in=datas,
+        orcamento__status__in=['confirmado', 'reagendar'],
+    ).values_list('orcamento__data_evento', 'item_id'):
+        reservados.setdefault(data, set()).add(item_id)
+    for p in pres:
+        p.eventos_no_dia = eventos_por_dia.get(p.data_evento, 0)
+        p.itens_reservados = [i.nome for i in p.itens.all() if i.item_id in reservados.get(p.data_evento, set())]
+
+
+@login_required
+@acesso_empresa_required
+def pre_orcamentos(request):
+    """Tela da equipe: pedidos recebidos pelo catálogo."""
+    status = request.GET.get('status', 'novo')
+    if status not in dict(PreOrcamento.STATUS_CHOICES):
+        status = 'novo'
+    pres = list(
+        PreOrcamento.objects.filter(empresa=request.user.empresa, status=status)
+        .select_related('cliente', 'orcamento').prefetch_related('itens')[:100]
+    )
+    if status == 'novo':
+        _avisos_disponibilidade(request.user.empresa, pres)
+    contagem = dict(
+        PreOrcamento.objects.filter(empresa=request.user.empresa).values_list('status').annotate(n=Count('id'))
+    )
+    return render(request, 'orcamentos/pre_orcamentos.html', {
+        'pres': pres,
+        'status': status,
+        'abas': [(chave, nome, contagem.get(chave, 0)) for chave, nome in PreOrcamento.STATUS_CHOICES],
+    })
+
+
+@login_required
+@acesso_empresa_required
+@require_http_methods(["POST"])
+def pre_orcamento_acao(request, pre_id):
+    """Gerar o orçamento de fato a partir do pedido, ou descartar."""
+    pre = get_object_or_404(PreOrcamento.objects.filter(empresa=request.user.empresa).select_related('cliente'), id=pre_id)
+    acao = request.POST.get('acao')
+
+    if pre.status != 'novo':
+        messages.info(request, f'O pedido #{pre.id} já foi tratado.')
+        return redirect('orcamentos:pre_orcamentos')
+
+    if acao == 'descartar':
+        pre.status = 'descartado'
+        pre.save(update_fields=['status'])
+        messages.warning(request, f'Pedido #{pre.id} descartado.')
+        return redirect('orcamentos:pre_orcamentos')
+
+    if acao != 'gerar':
+        return redirect('orcamentos:pre_orcamentos')
+
+    vencido = pre.vencido
+    cliente = pre.cliente or _cliente_por_telefone(
+        request.user.empresa, pre.nome, normalizar_telefone(pre.telefone) or pre.telefone
+    )
+    observacoes = f"Pedido #{pre.id} feito pelo catálogo online em {timezone.localtime(pre.criado_em):%d/%m/%Y %H:%M}."
+    if pre.observacoes:
+        observacoes += f"\nObservações do cliente: {pre.observacoes}"
+    orcamento = Orcamento.objects.create(
+        empresa=request.user.empresa,
+        criado_por=request.user,
+        cliente=cliente,
+        data_evento=pre.data_evento,
+        hora_evento=pre.hora_evento,
+        periodo_evento=pre.periodo_evento,
+        tipo_evento=pre.tipo_evento,
+        endereco=pre.endereco,
+        observacoes=observacoes,
+        status='pendente',
+    )
+    sem_item = []
+    for pi in pre.itens.select_related('item'):
+        if pi.item is None:
+            sem_item.append(pi.nome)
+            continue
+        if vencido:
+            # Validade passou: usa o preço atual do item, não o travado no pedido
+            valor, desconto, _ = _preco_catalogo(pi.item, pre.tipo_evento)
+        else:
+            valor, desconto = pi.valor_unitario, pi.desconto
+        OrcamentoItem.objects.create(orcamento=orcamento, item=pi.item, quantidade=pi.quantidade,
+                                     valor=valor, desconto=desconto)
+
+    pre.status = 'convertido'
+    pre.cliente = cliente
+    pre.orcamento = orcamento
+    pre.save(update_fields=['status', 'cliente', 'orcamento'])
+
+    aviso = f'Orçamento #{orcamento.id} gerado a partir do pedido #{pre.id}. Revise e confirme com o cliente.'
+    if vencido:
+        aviso += ' O pedido estava vencido: os preços foram atualizados para os valores atuais.'
+    if sem_item:
+        aviso += f' Itens que não existem mais e ficaram de fora: {", ".join(sem_item)}.'
+    messages.success(request, aviso)
+    return redirect('orcamentos:editar_orcamento', orcamento_id=orcamento.id)

@@ -29,6 +29,9 @@ urlpatterns = [
     path('itens/editar/<int:item_id>/', views.editar_item, name='editar_item'),
     path('itens/excluir/<int:item_id>/', views.excluir_item, name='excluir_item'),
     path('itens/<int:item_id>/foto/', views.foto_item, name='foto_item'),
+    path('itens/<int:item_id>/inflavel/', views.alternar_inflavel, name='alternar_inflavel'),
     path('catalogo/links/', views.links_catalogo, name='links_catalogo'),
+    path('pedidos/', views.pre_orcamentos, name='pre_orcamentos'),
+    path('pedidos/<int:pre_id>/acao/', views.pre_orcamento_acao, name='pre_orcamento_acao'),
     path('enviar-notificacao-whatsapp/<int:orcamento_id>/', views.enviar_notificacao_whatsapp, name='enviar_notificacao_whatsapp'),
 ]

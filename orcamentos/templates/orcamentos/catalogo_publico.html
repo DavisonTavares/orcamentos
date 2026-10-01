@@ -33,6 +33,9 @@
         .card-item .foto { aspect-ratio: 1 / 1; background: #EEF2F7; display: flex; align-items: center; justify-content: center; }
         .card-item .foto img { width: 100%; height: 100%; object-fit: cover; }
         .card-item .foto i { font-size: 2.4rem; color: #94A3B8; }
+        /* Item sem foto: logo da empresa menor e suavizada, sobre um fundo na cor da marca */
+        .card-item .foto.sem-foto { background: #EEF2F7; background: color-mix(in srgb, var(--cor) 10%, #fff); }
+        .card-item .foto.sem-foto img { width: 58%; height: 58%; object-fit: contain; opacity: .55; }
         .card-item .info { padding: 10px 12px 12px; display: flex; flex-direction: column; flex: 1; }
         .card-item .nome { font-weight: 600; font-size: .92rem; line-height: 1.25; margin-bottom: 4px; overflow-wrap: anywhere; }
         .card-item .descricao { font-size: .78rem; color: #64748B; margin-bottom: 8px;
@@ -46,6 +49,34 @@
             background: #25D366; color: #fff; border-radius: 999px; padding: 14px 20px; font-weight: 600;
             text-align: center; text-decoration: none; box-shadow: 0 6px 20px rgba(0, 0, 0, .2); }
         .btn-whatsapp:hover { color: #fff; background: #1EBE5A; }
+
+        /* Carrinho */
+        .controle { margin-top: 10px; }
+        .btn-add { width: 100%; border: 1.5px solid var(--cor); color: var(--cor); background: #fff; border-radius: 10px;
+            padding: 7px 8px; font-weight: 600; font-size: .85rem; }
+        .btn-add:active { transform: scale(.98); }
+        .stepper { display: flex; align-items: center; justify-content: space-between; background: var(--cor);
+            border-radius: 10px; color: #fff; overflow: hidden; }
+        .stepper button { background: transparent; border: 0; color: #fff; width: 40px; height: 36px; font-size: 1.1rem; }
+        .stepper span { font-weight: 700; }
+
+        .barra-carrinho { position: fixed; left: 12px; right: 12px; bottom: 12px; max-width: 560px; margin: 0 auto;
+            background: #1E293B; color: #fff; border-radius: 16px; padding: 10px 10px 10px 16px; display: flex;
+            align-items: center; justify-content: space-between; gap: 10px; box-shadow: 0 8px 24px rgba(0,0,0,.25); z-index: 20; }
+        .barra-carrinho .resumo { line-height: 1.2; }
+        .barra-carrinho .resumo small { color: #86EFAC; display: block; }
+        .barra-carrinho button { background: var(--cor); color: #fff; border: 0; border-radius: 12px; padding: 10px 16px; font-weight: 600; white-space: nowrap; }
+
+        .painel { position: fixed; inset: 0; background: rgba(15,23,42,.55); z-index: 30; display: none; }
+        .painel.aberto { display: block; }
+        .painel .folha { position: absolute; left: 0; right: 0; bottom: 0; max-height: 92vh; overflow-y: auto; background: #fff;
+            border-radius: 20px 20px 0 0; padding: 18px 16px 24px; max-width: 640px; margin: 0 auto; }
+        .painel h3 { font-size: 1.15rem; font-weight: 700; }
+        .linha-pedido { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 8px 0; border-bottom: 1px solid #E2E8F0; font-size: .9rem; }
+        .linha-pedido .stepper { min-width: 112px; }
+        .totais { background: #F8FAFC; border-radius: 12px; padding: 10px 12px; margin: 12px 0; }
+        .painel label { font-size: .85rem; font-weight: 600; margin-bottom: 2px; }
+        .campo-oculto { position: absolute; left: -9999px; width: 1px; height: 1px; overflow: hidden; }
     </style>
 </head>
 <body>
@@ -63,14 +94,21 @@
             <h2>{{ titulo }}</h2>
             <div class="grade">
                 {% for item in itens %}
-                <article class="card-item">
+                <article class="card-item" data-id="{{ item.id }}" data-nome="{{ item.nome }}"
+                         data-valor="{{ item.valor|stringformat:'.2f' }}" data-desconto="{{ item.desconto|stringformat:'.2f' }}">
+                    {% if item.foto_id %}
                     <div class="foto">
-                        {% if item.foto_id %}
                         <img src="{% url 'catalogo:foto' token item.id %}?v={{ item.foto_id }}" alt="{{ item.nome }}" loading="lazy">
-                        {% else %}
-                        <i class="fas fa-gift" aria-hidden="true"></i>
-                        {% endif %}
                     </div>
+                    {% elif logo_id %}
+                    <div class="foto sem-foto">
+                        <img src="{% url 'catalogo:logo' token %}?v={{ logo_id }}" alt="" loading="lazy">
+                    </div>
+                    {% else %}
+                    <div class="foto">
+                        <i class="fas fa-gift" aria-hidden="true"></i>
+                    </div>
+                    {% endif %}
                     <div class="info">
                         <div class="nome">{{ item.nome }}</div>
                         {% if item.descricao %}<div class="descricao">{{ item.descricao }}</div>{% endif %}
@@ -78,6 +116,7 @@
                         {% if item.valor_pix %}
                         <div class="pix"><i class="fas fa-bolt me-1"></i>R$ {{ item.valor_pix|floatformat:"0g" }} no PIX à vista</div>
                         {% endif %}
+                        <div class="controle" data-controle="{{ item.id }}"></div>
                     </div>
                 </article>
                 {% endfor %}
@@ -94,10 +133,209 @@
     </main>
 
     {% if whatsapp %}
-    <a class="btn-whatsapp" target="_blank" rel="noopener"
+    <a class="btn-whatsapp" id="btnWhatsapp" target="_blank" rel="noopener"
        href="https://wa.me/{{ whatsapp }}?text={{ 'Olá! Vi o catálogo e gostaria de fazer um orçamento 😊'|urlencode }}">
-        <i class="fab fa-whatsapp me-2"></i>Pedir orçamento pelo WhatsApp
+        <i class="fab fa-whatsapp me-2"></i>Falar no WhatsApp
     </a>
     {% endif %}
+
+    <!-- Barra do carrinho (aparece quando há itens) -->
+    <div class="barra-carrinho" id="barraCarrinho" hidden>
+        <div class="resumo">
+            <strong id="barraQtd"></strong> · <strong id="barraTotal"></strong>
+            <small id="barraPix"></small>
+        </div>
+        <button type="button" id="btnAbrirPedido">Pedir orçamento</button>
+    </div>
+
+    <!-- Painel do pedido: itens + dados da festa -->
+    <div class="painel{% if erros %} aberto{% endif %}" id="painelPedido" role="dialog" aria-modal="true" aria-labelledby="tituloPedido">
+        <div class="folha">
+            <div class="d-flex justify-content-between align-items-center mb-2">
+                <h3 class="mb-0" id="tituloPedido">Seu pedido</h3>
+                <button type="button" class="btn-close" id="btnFecharPedido" aria-label="Fechar"></button>
+            </div>
+
+            {% if erros %}
+            <div class="alert alert-danger py-2 small">
+                {% for erro in erros %}<div>{{ erro }}</div>{% endfor %}
+            </div>
+            {% endif %}
+
+            <div id="listaPedido"></div>
+            <div class="totais">
+                <div class="d-flex justify-content-between"><span>Total</span><strong id="painelTotal"></strong></div>
+                <div class="d-flex justify-content-between text-success small" id="painelPixLinha">
+                    <span><i class="fas fa-bolt me-1"></i>No PIX à vista</span><strong id="painelPix"></strong>
+                </div>
+            </div>
+
+            <form method="post" action="{% url 'catalogo:pedido' token %}" id="formPedido">
+                {% csrf_token %}
+                <div id="camposItens"></div>
+                <div class="campo-oculto" aria-hidden="true">
+                    <label for="website">Não preencha este campo</label>
+                    <input type="text" name="website" id="website" tabindex="-1" autocomplete="off">
+                </div>
+
+                <h3 class="mt-3 mb-2" style="font-size: 1rem;">Dados da festa</h3>
+                <div class="mb-2">
+                    <label for="nome">Seu nome</label>
+                    <input type="text" class="form-control" id="nome" name="nome" required maxlength="100" autocomplete="name" value="{{ dados.nome }}">
+                </div>
+                <div class="mb-2">
+                    <label for="telefone">WhatsApp (com DDD)</label>
+                    <input type="tel" class="form-control" id="telefone" name="telefone" required inputmode="tel" autocomplete="tel"
+                           placeholder="(83) 99999-0000" value="{{ dados.telefone }}">
+                </div>
+                <div class="row g-2 mb-2">
+                    <div class="col-6">
+                        <label for="data_evento">Data da festa</label>
+                        <input type="date" class="form-control" id="data_evento" name="data_evento" required min="{{ hoje }}" value="{{ dados.data_evento }}">
+                    </div>
+                    <div class="col-3">
+                        <label for="hora_evento">Horário</label>
+                        <input type="time" class="form-control" id="hora_evento" name="hora_evento" required value="{{ dados.hora_evento|default:'16:00' }}">
+                    </div>
+                    <div class="col-3">
+                        <label for="periodo_evento">Duração</label>
+                        <select class="form-select" id="periodo_evento" name="periodo_evento">
+                            {% for h in "123456" %}
+                            <option value="{{ h }}" {% if dados.periodo_evento == h or not dados.periodo_evento and h == "3" %}selected{% endif %}>{{ h }}h</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                </div>
+                <div class="mb-2">
+                    <label for="endereco">Endereço da festa</label>
+                    <textarea class="form-control" id="endereco" name="endereco" rows="2" required maxlength="500"
+                              placeholder="Rua, número, bairro, cidade">{{ dados.endereco }}</textarea>
+                </div>
+                <div class="mb-3">
+                    <label for="observacoes">Observações (opcional)</label>
+                    <textarea class="form-control" id="observacoes" name="observacoes" rows="2" maxlength="1000"
+                              placeholder="Ex.: tema da festa, quantidade de crianças">{{ dados.observacoes }}</textarea>
+                </div>
+
+                <p class="small text-muted mb-2">
+                    <i class="fas fa-clock me-1"></i>Os valores ficam garantidos por {{ validade_dias }} dias.
+                    A disponibilidade da data é confirmada pela nossa equipe.
+                </p>
+                <button type="submit" class="btn w-100 py-2 fw-semibold text-white" style="background: var(--cor); border-radius: 12px;" id="btnEnviarPedido">
+                    Enviar pedido
+                </button>
+            </form>
+        </div>
+    </div>
+
+    <script>
+    (function () {
+        const CHAVE = 'carrinho_{{ token|escapejs }}';
+        const reais = (n) => n.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL', maximumFractionDigits: 0 });
+
+        // Catálogo: dados de cada item, lidos dos cards
+        const itens = {};
+        document.querySelectorAll('.card-item[data-id]').forEach(function (card) {
+            itens[card.dataset.id] = {
+                nome: card.dataset.nome,
+                valor: parseFloat(card.dataset.valor) || 0,
+                desconto: parseFloat(card.dataset.desconto) || 0,
+            };
+        });
+
+        // Carrinho guardado no aparelho (some se o navegador bloquear o armazenamento)
+        let carrinho = {};
+        try { carrinho = JSON.parse(localStorage.getItem(CHAVE) || '{}') || {}; } catch (e) { carrinho = {}; }
+        Object.keys(carrinho).forEach(function (id) { if (!itens[id] || !(carrinho[id] > 0)) delete carrinho[id]; });
+        const salvar = () => { try { localStorage.setItem(CHAVE, JSON.stringify(carrinho)); } catch (e) {} };
+
+        function alterar(id, delta) {
+            const qtd = Math.min(20, Math.max(0, (carrinho[id] || 0) + delta));
+            if (qtd) carrinho[id] = qtd; else delete carrinho[id];
+            salvar();
+            desenhar();
+        }
+
+        function stepperHTML(id) {
+            return '<div class="stepper"><button type="button" data-menos="' + id + '" aria-label="Diminuir">−</button>' +
+                   '<span>' + carrinho[id] + '</span>' +
+                   '<button type="button" data-mais="' + id + '" aria-label="Aumentar">+</button></div>';
+        }
+
+        function totais() {
+            // Mesma conta do sistema: soma com o desconto de cada item e arredonda o total
+            let qtd = 0, cheio = 0, pix = 0;
+            Object.keys(carrinho).forEach(function (id) {
+                const it = itens[id], q = carrinho[id];
+                qtd += q;
+                cheio += it.valor * q;
+                pix += it.valor * q * (100 - it.desconto) / 100;
+            });
+            return { qtd: qtd, cheio: Math.round(cheio), pix: Math.round(pix) };
+        }
+
+        function desenhar() {
+            document.querySelectorAll('[data-controle]').forEach(function (el) {
+                const id = el.dataset.controle;
+                el.innerHTML = carrinho[id]
+                    ? stepperHTML(id)
+                    : '<button type="button" class="btn-add" data-mais="' + id + '"><i class="fas fa-plus me-1"></i>Adicionar</button>';
+            });
+
+            const t = totais();
+            const temItens = t.qtd > 0;
+            document.getElementById('barraCarrinho').hidden = !temItens;
+            const whats = document.getElementById('btnWhatsapp');
+            if (whats) whats.hidden = temItens;
+            document.getElementById('barraQtd').textContent = t.qtd + (t.qtd === 1 ? ' item' : ' itens');
+            document.getElementById('barraTotal').textContent = reais(t.cheio);
+            document.getElementById('barraPix').textContent = t.pix < t.cheio ? reais(t.pix) + ' no PIX à vista' : '';
+
+            const lista = document.getElementById('listaPedido');
+            lista.innerHTML = temItens ? '' : '<p class="text-muted small my-2">Seu carrinho está vazio. Adicione itens do catálogo.</p>';
+            Object.keys(carrinho).forEach(function (id) {
+                const linha = document.createElement('div');
+                linha.className = 'linha-pedido';
+                const nome = document.createElement('div');
+                nome.textContent = itens[id].nome;
+                linha.appendChild(nome);
+                linha.insertAdjacentHTML('beforeend', stepperHTML(id));
+                lista.appendChild(linha);
+            });
+            document.getElementById('painelTotal').textContent = reais(t.cheio);
+            document.getElementById('painelPix').textContent = reais(t.pix);
+            document.getElementById('painelPixLinha').hidden = !(t.pix < t.cheio);
+            document.getElementById('btnEnviarPedido').disabled = !temItens;
+        }
+
+        document.addEventListener('click', function (e) {
+            const mais = e.target.closest('[data-mais]');
+            const menos = e.target.closest('[data-menos]');
+            if (mais) alterar(mais.dataset.mais, 1);
+            if (menos) alterar(menos.dataset.menos, -1);
+        });
+
+        const painel = document.getElementById('painelPedido');
+        document.getElementById('btnAbrirPedido').addEventListener('click', () => painel.classList.add('aberto'));
+        document.getElementById('btnFecharPedido').addEventListener('click', () => painel.classList.remove('aberto'));
+        painel.addEventListener('click', (e) => { if (e.target === painel) painel.classList.remove('aberto'); });
+
+        // No envio, o carrinho vira campos item_<id>=quantidade
+        document.getElementById('formPedido').addEventListener('submit', function (e) {
+            const campos = document.getElementById('camposItens');
+            campos.innerHTML = '';
+            Object.keys(carrinho).forEach(function (id) {
+                const input = document.createElement('input');
+                input.type = 'hidden'; input.name = 'item_' + id; input.value = carrinho[id];
+                campos.appendChild(input);
+            });
+            if (!campos.children.length) { e.preventDefault(); return; }
+            document.getElementById('btnEnviarPedido').disabled = true;
+            document.getElementById('btnEnviarPedido').textContent = 'Enviando...';
+        });
+
+        desenhar();
+    })();
+    </script>
 </body>
 </html>
