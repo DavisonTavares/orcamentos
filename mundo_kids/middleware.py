@@ -1,5 +1,7 @@
 import re
 
+from django.utils import timezone
+
 # Trechos em que espaços/quebras de linha importam e não podem ser mexidos
 _TRECHOS_PROTEGIDOS = re.compile(r"(<(pre|textarea|script)\b.*?</\2\s*>)", re.IGNORECASE | re.DOTALL)
 # Indentação no começo das linhas e espaços no fim delas
@@ -46,3 +48,24 @@ class CompactarHTMLMiddleware:
             if response.has_header("Content-Length"):
                 response["Content-Length"] = str(len(response.content))
         return response
+
+
+class RenovarSessaoMiddleware:
+    """
+    Mantém o usuário logado enquanto ele usar o sistema: renova o prazo da
+    sessão (SESSION_COOKIE_AGE) no máximo uma vez por dia. Assim só expira
+    depois de SESSION_COOKIE_AGE sem nenhum acesso — sem gravar a sessão no
+    banco a cada página, como faria o SESSION_SAVE_EVERY_REQUEST.
+    """
+
+    def __init__(self, get_response):
+        self.get_response = get_response
+
+    def __call__(self, request):
+        usuario = getattr(request, "user", None)
+        if usuario is not None and usuario.is_authenticated:
+            hoje = timezone.localdate().isoformat()
+            if request.session.get("_renovada_em") != hoje:
+                # Mudar a sessão faz o Django salvá-la e reenviar o cookie com o prazo cheio
+                request.session["_renovada_em"] = hoje
+        return self.get_response(request)

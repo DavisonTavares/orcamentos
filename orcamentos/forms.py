@@ -39,6 +39,20 @@ class ItemForm(forms.ModelForm):
     foto = forms.ImageField(required=False)
     remover_foto = forms.BooleanField(required=False)
 
+    def clean(self):
+        dados = super().clean()
+        campos = ['prog_quantidade_minima', 'prog_a_cada', 'prog_reducao', 'prog_preco_minimo']
+        preenchidos = [c for c in campos if dados.get(c) not in (None, '')]
+        if preenchidos and len(preenchidos) < len(campos):
+            raise forms.ValidationError('Preço progressivo: preencha os 4 campos (ou deixe todos em branco).')
+        if len(preenchidos) == len(campos):
+            if not dados['prog_a_cada'] or not dados['prog_quantidade_minima']:
+                raise forms.ValidationError('Preço progressivo: quantidade mínima e "a cada" precisam ser maiores que zero.')
+            valor = dados.get('valor_unitario')
+            if valor is not None and dados['prog_preco_minimo'] > valor:
+                raise forms.ValidationError('Preço progressivo: o preço mínimo não pode ser maior que o valor unitário.')
+        return dados
+
     def salvar_foto(self, item):
         """Aplica a foto enviada (ou a remoção) ao item já salvo."""
         if self.cleaned_data.get('foto'):
@@ -51,7 +65,8 @@ class ItemForm(forms.ModelForm):
     class Meta:
         model = Item
         fields = ['nome', 'descricao', 'valor_unitario', 'desconto', 'categoria', 'disponivel', 'investimento', 'custo_fixo', 'percentual_lucro',
-                  'exibir_catalogo', 'inflavel']
+                  'exibir_catalogo', 'inflavel', 'quantidade_estoque',
+                  'prog_quantidade_minima', 'prog_a_cada', 'prog_reducao', 'prog_preco_minimo']
         widgets = {
             'nome': forms.TextInput(attrs={
                 'class': 'form-control',

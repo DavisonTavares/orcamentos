@@ -143,12 +143,27 @@
                     <option value="antigos" {% if sort_by == 'antigos' %}selected{% endif %}>Mais antigos</option>
                     <option value="valor-maior" {% if sort_by == 'valor-maior' %}selected{% endif %}>Maior valor</option>
                     <option value="valor-menor" {% if sort_by == 'valor-menor' %}selected{% endif %}>Menor valor</option>
+                    <option value="evento" {% if sort_by == 'evento' %}selected{% endif %}>Data do evento (mais próximos)</option>
                 </select>
             </div>
             <div class="col-md-1">
-                <button type="submit" class="btn btn-primary w-100">
+                <button type="submit" class="btn btn-primary w-100" aria-label="Filtrar">
                     <i class="fas fa-filter"></i>
                 </button>
+            </div>
+            <div class="col-md-5 mt-2">
+                <select name="pagamento" class="form-select" aria-label="Situação do pagamento" onchange="this.form.submit()">
+                    {% for valor, nome in filtros_pagamento %}
+                    <option value="{{ valor }}" {% if valor == pagamento_filter %}selected{% endif %}>{{ nome }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="col-md-4 mt-2 d-flex align-items-center">
+                <div class="form-check mb-0">
+                    <input class="form-check-input" type="checkbox" name="quando" value="futuros" id="soFuturos"
+                           {% if quando_filter == 'futuros' %}checked{% endif %} onchange="this.form.submit()">
+                    <label class="form-check-label" for="soFuturos">Só eventos de hoje em diante</label>
+                </div>
             </div>
         </form>
     </div>
@@ -168,6 +183,9 @@
                             <span class="badge {% if orcamento.status == 'confirmado' %}bg-success{% elif orcamento.status == 'pendente' %}bg-warning{% else %}bg-danger{% endif %}">
                                 {{ orcamento.get_status_display }}
                             </span>
+                            {% if orcamento.status == 'confirmado' and not orcamento.valor_pago %}
+                            <span class="badge bg-danger ms-1" title="Confirmado sem nenhum pagamento registrado"><i class="fas fa-exclamation-circle me-1"></i>Sem sinal</span>
+                            {% endif %}
                         </div>
                         <p class="mb-1 text-dark"><i class="fas fa-user me-2"></i> <strong>{{ orcamento.cliente.nome }}</strong></p>
                         <p class="mb-1 text-muted"><i class="fas fa-phone me-2"></i> {{ orcamento.cliente.telefone }}</p>

@@ -1,0 +1,122 @@
+{% extends "base.html" %}
+
+{% block title %}Disponibilidade do Dia - Mundo Kids{% endblock %}
+
+{% block extra_css %}
+<style>
+    .item-locado { border-left: 4px solid var(--bs-success); }
+    .item-locado.falta { border-left-color: var(--bs-danger); }
+    .item-locado.pendente { border-left-color: var(--bs-secondary); }
+    .festa-linha { display: flex; justify-content: space-between; gap: 8px; padding: 6px 0; border-top: 1px solid var(--bs-border-color); font-size: .9rem; text-decoration: none; color: inherit; }
+    .festa-linha:hover { color: var(--bs-link-color); }
+    .chip-livre { display: inline-flex; align-items: center; gap: 6px; border: 1px solid var(--bs-border-color); border-radius: 999px;
+        padding: 6px 12px; margin: 0 6px 8px 0; font-size: .9rem; background: var(--bs-body-bg); }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="container py-4">
+    <div class="d-flex flex-wrap justify-content-between align-items-center gap-3 mb-3">
+        <div>
+            <h1 class="h2 mb-1"><i class="fas fa-boxes me-2"></i>Disponibilidade do Dia</h1>
+            <p class="text-muted mb-0">Brinquedos locados e livres, considerando o estoque e o horário das festas.</p>
+        </div>
+        <a href="{% url 'orcamentos:agendamentos' %}" class="btn btn-outline-secondary"><i class="fas fa-arrow-left me-2"></i>Agendamentos</a>
+    </div>
+
+    <!-- Escolha do dia -->
+    <form method="get" class="card shadow-sm border-0 mb-3">
+        <div class="card-body d-flex flex-wrap align-items-center gap-2">
+            <a class="btn btn-outline-secondary" href="?data={{ dia_anterior|date:'Y-m-d' }}{% if incluir_pendentes %}&pendentes=1{% endif %}{% if todos_itens %}&todos=1{% endif %}" aria-label="Dia anterior">
+                <i class="fas fa-chevron-left"></i>
+            </a>
+            <input type="date" name="data" value="{{ dia|date:'Y-m-d' }}" class="form-control w-auto" onchange="this.form.submit()" aria-label="Dia">
+            <a class="btn btn-outline-secondary" href="?data={{ dia_seguinte|date:'Y-m-d' }}{% if incluir_pendentes %}&pendentes=1{% endif %}{% if todos_itens %}&todos=1{% endif %}" aria-label="Próximo dia">
+                <i class="fas fa-chevron-right"></i>
+            </a>
+            {% if dia != hoje %}<a class="btn btn-link" href="?">Hoje</a>{% endif %}
+            <strong class="ms-2">{{ dia|date:"l, d/m/Y" }}</strong>
+            <div class="ms-auto d-flex flex-wrap gap-3">
+                <div class="form-check mb-0">
+                    <input class="form-check-input" type="checkbox" name="pendentes" value="1" id="pendentes" {% if incluir_pendentes %}checked{% endif %} onchange="this.form.submit()">
+                    <label class="form-check-label" for="pendentes">Mostrar pendentes</label>
+                </div>
+                <div class="form-check mb-0">
+                    <input class="form-check-input" type="checkbox" name="todos" value="1" id="todos" {% if todos_itens %}checked{% endif %} onchange="this.form.submit()">
+                    <label class="form-check-label" for="todos">Todos os itens</label>
+                </div>
+            </div>
+        </div>
+    </form>
+
+    <!-- Resumo -->
+    <div class="row g-2 mb-3 text-center">
+        <div class="col-6 col-md-3"><div class="card border-0 shadow-sm"><div class="card-body py-2"><div class="h4 mb-0">{{ qtd_festas }}</div><small class="text-muted">festa{{ qtd_festas|pluralize }} confirmada{{ qtd_festas|pluralize }}</small></div></div></div>
+        <div class="col-6 col-md-3"><div class="card border-0 shadow-sm"><div class="card-body py-2"><div class="h4 mb-0 text-success">{{ qtd_em_uso }}</div><small class="text-muted">itens locados</small></div></div></div>
+        <div class="col-6 col-md-3"><div class="card border-0 shadow-sm"><div class="card-body py-2"><div class="h4 mb-0">{{ livres|length }}</div><small class="text-muted">itens livres</small></div></div></div>
+        <div class="col-6 col-md-3"><div class="card border-0 shadow-sm"><div class="card-body py-2"><div class="h4 mb-0 {% if qtd_falta %}text-danger{% endif %}">{{ qtd_falta }}</div><small class="text-muted">com falta no estoque</small></div></div></div>
+    </div>
+
+    <!-- Locados -->
+    <h2 class="h5 fw-bold mt-4 mb-2"><i class="fas fa-truck-loading me-2 text-success"></i>Locados</h2>
+    <div class="row g-3">
+        {% for l in locados %}
+        <div class="col-md-6 col-lg-4">
+            <div class="card shadow-sm border-0 h-100 item-locado {% if l.falta %}falta{% elif l.so_pendente %}pendente{% endif %}">
+                <div class="card-body">
+                    <div class="d-flex justify-content-between align-items-start gap-2 mb-1">
+                        <strong>{{ l.item.nome|default:l.item.descricao }}</strong>
+                        {% if l.falta %}
+                        <span class="badge bg-danger">Falta</span>
+                        {% elif l.so_pendente %}
+                        <span class="badge bg-secondary">Só em pendente</span>
+                        {% elif l.livres_no_pico %}
+                        <span class="badge bg-success">{{ l.livres_no_pico }} livre{{ l.livres_no_pico|pluralize }}</span>
+                        {% else %}
+                        <span class="badge bg-primary">Todo em uso</span>
+                        {% endif %}
+                    </div>
+                    {% if not l.so_pendente %}
+                    <div class="small {% if l.falta %}text-danger fw-semibold{% else %}text-muted{% endif %} mb-1">
+                        {{ l.pico }} de {{ l.item.quantidade_estoque }} em uso{% if l.pico_em %} às {{ l.pico_em|time:"H:i" }}{% endif %}
+                        {% if l.falta %}— falta{{ l.faltam|pluralize:"m" }} {{ l.faltam }}{% endif %}
+                    </div>
+                    {% endif %}
+                    {% for f in l.festas %}
+                    <a class="festa-linha" href="{% url 'orcamentos:detalhes_orcamento' f.orcamento.id %}">
+                        <span>{% if f.inicio.date != dia %}{{ f.inicio|date:"d/m" }} {% endif %}{{ f.inicio|time:"H:i" }}–{{ f.fim|time:"H:i" }} · {{ f.orcamento.cliente.nome }}</span>
+                        <span class="text-nowrap">{{ f.quantidade }}x · #{{ f.orcamento.id }}</span>
+                    </a>
+                    {% endfor %}
+                    {% for f in l.pendentes %}
+                    <a class="festa-linha text-muted" href="{% url 'orcamentos:detalhes_orcamento' f.orcamento.id %}">
+                        <span>{{ f.inicio|time:"H:i" }}–{{ f.fim|time:"H:i" }} · {{ f.orcamento.cliente.nome }} <span class="badge bg-secondary">pendente</span></span>
+                        <span class="text-nowrap">{{ f.quantidade }}x · #{{ f.orcamento.id }}</span>
+                    </a>
+                    {% endfor %}
+                </div>
+            </div>
+        </div>
+        {% empty %}
+        <div class="col-12 text-muted">Nenhum item locado neste dia.</div>
+        {% endfor %}
+    </div>
+
+    <!-- Livres -->
+    <h2 class="h5 fw-bold mt-4 mb-2"><i class="fas fa-check-circle me-2 text-primary"></i>Livres</h2>
+    <div>
+        {% for item in livres %}
+        <span class="chip-livre">{{ item.nome|default:item.descricao }}{% if item.quantidade_estoque > 1 %} <span class="badge bg-secondary">{{ item.quantidade_estoque }}</span>{% endif %}{% if not item.disponivel %} <span class="badge bg-warning">indisponível</span>{% endif %}</span>
+        {% empty %}
+        <span class="text-muted">Nenhum item livre neste dia.</span>
+        {% endfor %}
+    </div>
+
+    <p class="small text-muted mt-4 mb-0">
+        <i class="fas fa-info-circle me-1"></i>
+        Um mesmo brinquedo pode ir a duas festas no dia se elas não acontecerem ao mesmo tempo
+        (com {{ margem_horas }}h de folga para montagem e desmontagem). "Falta" aparece quando, num mesmo horário,
+        as festas pedem mais unidades do que o estoque cadastrado em Itens.
+    </p>
+</div>
+{% endblock %}

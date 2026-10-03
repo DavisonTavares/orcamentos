@@ -93,6 +93,17 @@
         .preco { display: block; font-weight: 700; font-size: 1.08rem; color: var(--texto); }
         .pix { font-size: .74rem; color: var(--verde); font-weight: 600; display: flex; align-items: center; gap: 3px; }
         .card .controle { padding: 10px 11px 11px; }
+        .preco .un { font-size: .75rem; font-weight: 600; color: var(--texto-2); margin-left: 1px; }
+        .faixa-resumo { display: block; font-size: .72rem; color: var(--texto-2); font-weight: 600; }
+        .faixas { width: 100%; border-collapse: collapse; margin: 10px 0 6px; font-size: .88rem; }
+        .faixas caption { caption-side: top; text-align: left; font-size: .8rem; color: var(--texto-2); padding-bottom: 4px; }
+        .faixas td { padding: 6px 2px; border-bottom: 1px solid var(--borda); }
+        .faixas td:last-child { text-align: right; font-weight: 700; }
+        .stepper input { width: 64px; border: 0; background: transparent; color: #fff; text-align: center; font-weight: 700;
+            font-size: 16px; -moz-appearance: textfield; }
+        .stepper input::-webkit-inner-spin-button, .stepper input::-webkit-outer-spin-button { -webkit-appearance: none; margin: 0; }
+        .stepper input:focus { outline: 2px solid rgba(255,255,255,.6); border-radius: 6px; }
+        .linha-pedido small { display: block; color: var(--texto-2); font-size: .75rem; }
 
         /* ---------- Botões de adicionar / quantidade ---------- */
         .btn-add { width: 100%; min-height: 44px; border: 1.5px solid var(--cor); color: var(--cor); background: #fff; border-radius: 12px;
@@ -227,7 +238,8 @@
             <div class="grade">
                 {% for item in itens %}
                 <article class="card card-item" data-id="{{ item.id }}" data-nome="{{ item.nome }}"
-                         data-valor="{{ item.valor|stringformat:'.2f' }}" data-desconto="{{ item.desconto|stringformat:'.2f' }}">
+                         data-valor="{{ item.valor|stringformat:'.2f' }}" data-desconto="{{ item.desconto|stringformat:'.2f' }}"{% if item.progressivo %}
+                         data-progressivo="{{ item.progressivo }}"{% endif %}>
                     <button type="button" class="abrir" data-abrir="{{ item.id }}" aria-label="Ver detalhes de {{ item.nome }}">
                         <span class="foto{% if not item.foto_id and logo_id %} sem-foto{% endif %}">
                             {% if item.foto_id %}
@@ -243,8 +255,13 @@
                             <span class="nome">{{ item.nome }}</span>
                             {% if item.descricao %}<span class="descricao">{{ item.descricao }}</span>{% endif %}
                             <span class="precos">
+                                {% if item.progressivo %}
+                                <span class="preco">R$ {{ item.valor|floatformat:"2g" }}<small class="un">/un</small></span>
+                                <span class="faixa-resumo">a partir de {{ item.quantidade_minima }} un · até R$ {{ item.preco_minimo|floatformat:"2g" }}/un</span>
+                                {% else %}
                                 <span class="preco">R$ {{ item.valor|floatformat:"0g" }}</span>
                                 {% if item.valor_pix %}<span class="pix">R$ {{ item.valor_pix|floatformat:"0g" }} no PIX</span>{% endif %}
+                                {% endif %}
                             </span>
                         </span>
                     </button>
@@ -262,8 +279,19 @@
                             </div>
                             <h4>{{ item.nome }}</h4>
                             {% if item.descricao %}<p>{{ item.descricao }}</p>{% endif %}
+                            {% if item.progressivo %}
+                            <div class="preco">R$ {{ item.valor|floatformat:"2g" }}<small class="un">/un</small></div>
+                            <table class="faixas">
+                                <caption>Quanto mais, mais barato (preço por unidade)</caption>
+                                {% for de, ate, preco in item.faixas %}
+                                <tr><td>{% if ate %}{{ de }} a {{ ate }}{% else %}{{ de }} ou mais{% endif %}</td><td>R$ {{ preco|floatformat:"2g" }}</td></tr>
+                                {% endfor %}
+                            </table>
+                            {% if item.desconto %}<div class="pix"><svg class="icone"><use href="#i-raio"/></svg>{{ item.desconto|floatformat:"0" }}% de desconto no PIX à vista</div>{% endif %}
+                            {% else %}
                             <div class="preco">R$ {{ item.valor|floatformat:"0g" }}</div>
                             {% if item.valor_pix %}<div class="pix"><svg class="icone"><use href="#i-raio"/></svg>R$ {{ item.valor_pix|floatformat:"0g" }} no PIX à vista</div>{% endif %}
+                            {% endif %}
                         </div>
                     </template>
                 </article>
@@ -400,8 +428,20 @@
                 nome: card.dataset.nome,
                 valor: parseFloat(card.dataset.valor) || 0,
                 desconto: parseFloat(card.dataset.desconto) || 0,
+                // Preço progressivo (ex.: balões): {minimo, a_cada, reducao, piso, base, fator}
+                prog: card.dataset.progressivo ? JSON.parse(card.dataset.progressivo) : null,
             };
         });
+
+        // Preço por unidade na faixa da quantidade — mesma regra do servidor
+        function unitario(id, q) {
+            const it = itens[id], p = it.prog;
+            if (!p) return it.valor;
+            const degraus = Math.max(0, Math.floor((q - p.minimo) / p.a_cada));
+            return Math.round(Math.max(p.piso, p.base - degraus * p.reducao) * p.fator * 100) / 100;
+        }
+        const limite = (id) => itens[id].prog ? 1000 : 20;
+        const centavos = (n) => n.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
 
         // Carrinho guardado no aparelho (se o navegador bloquear, funciona só nesta visita)
         let carrinho = {};
@@ -418,9 +458,13 @@
             tempoAviso = setTimeout(() => el.classList.remove('visivel'), 1400);
         }
 
-        function alterar(id, delta) {
+        function alterar(id, delta, valorDireto) {
             const antes = carrinho[id] || 0;
-            const qtd = Math.min(20, Math.max(0, antes + delta));
+            let qtd = valorDireto !== undefined ? valorDireto : antes + delta;
+            qtd = Math.min(limite(id), Math.max(0, qtd || 0));
+            const p = itens[id].prog;
+            // Progressivo: o primeiro "Adicionar" já coloca o mínimo; abaixo dele, sai do pedido
+            if (p && qtd > 0 && qtd < p.minimo) qtd = (valorDireto !== undefined || delta > 0) ? p.minimo : 0;
             if (qtd) carrinho[id] = qtd; else delete carrinho[id];
             salvar();
             desenhar();
@@ -435,7 +479,10 @@
             }
             return '<div class="stepper">' +
                 '<button type="button" data-menos="' + id + '" aria-label="Diminuir">' + svg('i-menos') + '</button>' +
-                '<output aria-label="Quantidade">' + carrinho[id] + '</output>' +
+                (itens[id].prog
+                    ? '<input type="number" inputmode="numeric" min="' + itens[id].prog.minimo + '" max="1000" value="' + carrinho[id] +
+                      '" data-qtd="' + id + '" aria-label="Quantidade de ' + itens[id].nome.replace(/"/g, '') + '">'
+                    : '<output aria-label="Quantidade">' + carrinho[id] + '</output>') +
                 '<button type="button" data-mais="' + id + '" aria-label="Aumentar">' + svg('i-mais') + '</button></div>';
         }
 
@@ -443,8 +490,9 @@
             // Mesma conta do sistema: soma com o desconto de cada item e arredonda o total
             let qtd = 0, cheio = 0, pix = 0;
             Object.keys(carrinho).forEach(function (id) {
-                const it = itens[id], q = carrinho[id];
-                qtd += q; cheio += it.valor * q; pix += it.valor * q * (100 - it.desconto) / 100;
+                const it = itens[id], q = carrinho[id], v = unitario(id, q);
+                qtd += it.prog ? 1 : q;  // 60 balões contam como 1 item no contador
+                cheio += v * q; pix += v * q * (100 - it.desconto) / 100;
             });
             return { qtd: qtd, cheio: Math.round(cheio), pix: Math.round(pix) };
         }
@@ -466,6 +514,11 @@
                 linha.className = 'linha-pedido';
                 const nome = document.createElement('div');
                 nome.textContent = itens[id].nome;
+                if (itens[id].prog) {
+                    const det = document.createElement('small');
+                    det.textContent = carrinho[id] + ' × ' + centavos(unitario(id, carrinho[id])) + ' = ' + centavos(carrinho[id] * unitario(id, carrinho[id]));
+                    nome.appendChild(det);
+                }
                 linha.appendChild(nome);
                 const ctl = document.createElement('div');
                 ctl.innerHTML = controleHTML(id);
@@ -502,6 +555,10 @@
             if (e.target.closest('[data-fechar]') || e.target.classList.contains('folha-fundo')) fecharFolhas();
         });
         document.addEventListener('keydown', (e) => { if (e.key === 'Escape') fecharFolhas(); });
+        document.addEventListener('change', function (e) {
+            const campo = e.target.closest('[data-qtd]');
+            if (campo) alterar(campo.dataset.qtd, 0, parseInt(campo.value, 10) || 0);
+        });
         $('btnAbrirPedido').addEventListener('click', () => { fecharFolhas(); abrirFolha('painelPedido'); });
         if ($('painelPedido').classList.contains('aberto')) document.body.classList.add('travado');
 

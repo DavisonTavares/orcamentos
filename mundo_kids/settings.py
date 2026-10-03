@@ -75,6 +75,8 @@ MIDDLEWARE = [
     'django.middleware.common.CommonMiddleware',
     'django.middleware.csrf.CsrfViewMiddleware',
     'django.contrib.auth.middleware.AuthenticationMiddleware',
+    # Renova o login uma vez por dia enquanto o sistema é usado (ver SESSION_COOKIE_AGE)
+    'mundo_kids.middleware.RenovarSessaoMiddleware',
     'django.contrib.messages.middleware.MessageMiddleware',
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
 ]
@@ -160,6 +162,9 @@ USE_THOUSAND_SEPARATOR = True
 # Configuração do modelo de usuário personalizado
 AUTH_USER_MODEL = 'accounts.Usuario'
 LOGIN_REDIRECT_URL = '/orcamentos/'  
+# Login dura 30 dias sem uso; a cada dia de uso o prazo recomeça (RenovarSessaoMiddleware)
+SESSION_COOKIE_AGE = 60 * 60 * 24 * 30
+
 LOGIN_URL = '/accounts/login/'       
 LOGOUT_REDIRECT_URL = '/accounts/login/'  
 

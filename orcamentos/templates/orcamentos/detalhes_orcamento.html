@@ -190,7 +190,7 @@
                 <li>
                     <a href="{% url 'orcamentos:detalhes_orcamento' c.orcamento.id %}" class="alert-link">#{{ c.orcamento.id }} · {{ c.orcamento.cliente.nome }}</a>
                     — {{ c.inicio|time:"H:i" }} às {{ c.fim|time:"H:i" }}{% if c.sobrepoe %} <span class="badge bg-danger">horários se cruzam</span>{% endif %}
-                    {% if c.itens_em_comum %}<span class="text-danger">· mesmo brinquedo: {{ c.itens_em_comum|join:", " }}</span>{% endif %}
+                    {% if c.itens_em_comum %}<span class="text-danger">· passa do estoque: {{ c.itens_em_comum|join:", " }}</span>{% endif %}
                 </li>
                 {% endfor %}
             </ul>

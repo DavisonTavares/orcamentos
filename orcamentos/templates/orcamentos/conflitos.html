@@ -1,0 +1,118 @@
+{% extends "base.html" %}
+
+{% block title %}Conflitos de Horário - Mundo Kids{% endblock %}
+
+{% block extra_css %}
+<style>
+    .par-conflito { border-left: 4px solid #f59e0b; }
+    .par-conflito.cruza { border-left-color: #dc3545; }
+    .evento-conflito { text-decoration: none; color: inherit; display: block; border-radius: 10px; padding: 10px 12px; }
+    .evento-conflito:hover { background: var(--bs-tertiary-bg); }
+    .vs { font-size: .75rem; font-weight: 700; color: var(--bs-secondary-color); }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="container py-4">
+    <div class="d-flex flex-wrap justify-content-between align-items-center gap-3 mb-3">
+        <div>
+            <h1 class="h2 mb-1"><i class="fas fa-exclamation-triangle text-warning me-2"></i>Conflitos de Horário</h1>
+            <p class="text-muted mb-0">
+                Eventos que se cruzam ou ficam a menos de {{ margem_horas }}h um do outro (montagem e desmontagem).
+            </p>
+        </div>
+        <a href="{% url 'orcamentos:agendamentos' %}" class="btn btn-outline-secondary">
+            <i class="fas fa-arrow-left me-2"></i>Agendamentos
+        </a>
+    </div>
+
+    <form method="get" class="card shadow-sm border-0 mb-3">
+        <div class="card-body d-flex flex-wrap align-items-center gap-3">
+            <select name="periodo" class="form-select w-auto" onchange="this.form.submit()" aria-label="Período">
+                {% for valor, nome in periodos %}
+                <option value="{{ valor }}" {% if valor == periodo %}selected{% endif %}>{{ nome }}</option>
+                {% endfor %}
+            </select>
+            <div class="form-check mb-0">
+                <input class="form-check-input" type="checkbox" name="pendentes" value="1" id="pendentes"
+                       {% if incluir_pendentes %}checked{% endif %} onchange="this.form.submit()">
+                <label class="form-check-label" for="pendentes">Incluir orçamentos pendentes</label>
+            </div>
+            <div class="form-check mb-0">
+                <input class="form-check-input" type="checkbox" name="verificados" value="1" id="verificados"
+                       {% if incluir_verificados %}checked{% endif %} onchange="this.form.submit()">
+                <label class="form-check-label" for="verificados">Mostrar já verificados</label>
+            </div>
+            <div class="ms-auto small">
+                <strong>{{ total }}</strong> conflito{{ total|pluralize }}
+                {% if com_mesmo_item %}· <span class="text-danger fw-semibold">{{ com_mesmo_item }} passando do estoque</span>{% endif %}
+                {% if total_verificados %}· {{ total_verificados }} verificado{{ total_verificados|pluralize }}{% endif %}
+            </div>
+        </div>
+    </form>
+
+    {% for dia in dias %}
+    <h2 class="h6 fw-bold mt-4 mb-2">
+        <i class="fas fa-calendar-day me-1 text-muted"></i>{{ dia.data|date:"d/m/Y - l" }}
+    </h2>
+    {% for p in dia.pares %}
+    <div class="card shadow-sm border-0 mb-2 par-conflito {% if p.sobrepoe %}cruza{% endif %}{% if p.verificado %} opacity-75{% endif %}">
+        <div class="card-body py-2">
+            <div class="d-flex flex-wrap gap-2 justify-content-between align-items-center mb-1">
+                <div>
+                    {% if p.sobrepoe %}
+                    <span class="badge bg-danger">Horários se cruzam</span>
+                    {% else %}
+                    <span class="badge bg-warning">Menos de {{ margem_horas }}h de intervalo</span>
+                    {% endif %}
+                    {% if p.tem_pendente %}<span class="badge bg-secondary">envolve orçamento pendente</span>{% endif %}
+                    {% if p.verificado %}<span class="badge bg-success"><i class="fas fa-check me-1"></i>verificado</span>{% endif %}
+                </div>
+                {% if p.itens_em_comum %}
+                <span class="small text-danger fw-semibold"><i class="fas fa-cube me-1"></i>Passa do estoque: {{ p.itens_em_comum|join:", " }}</span>
+                {% endif %}
+            </div>
+            <div class="row g-1 align-items-center">
+                <div class="col-md">
+                    <a class="evento-conflito" href="{% url 'orcamentos:detalhes_orcamento' p.a.id %}">
+                        <strong>{{ p.inicio_a|time:"H:i" }}–{{ p.fim_a|time:"H:i" }}</strong> · #{{ p.a.id }} {{ p.a.cliente.nome }}
+                        {% if p.a.status == 'pendente' %}<span class="badge bg-secondary ms-1">pendente</span>{% endif %}
+                        <div class="small text-muted">{{ p.a.tipo_evento }} · {{ p.a.endereco|truncatechars:50 }}</div>
+                    </a>
+                </div>
+                <div class="col-md-auto text-center vs">×</div>
+                <div class="col-md">
+                    <a class="evento-conflito" href="{% url 'orcamentos:detalhes_orcamento' p.b.id %}">
+                        <strong>{% if p.inicio_b.date != p.data %}{{ p.inicio_b|date:"d/m" }} {% endif %}{{ p.inicio_b|time:"H:i" }}–{{ p.fim_b|time:"H:i" }}</strong> · #{{ p.b.id }} {{ p.b.cliente.nome }}
+                        {% if p.b.status == 'pendente' %}<span class="badge bg-secondary ms-1">pendente</span>{% endif %}
+                        <div class="small text-muted">{{ p.b.tipo_evento }} · {{ p.b.endereco|truncatechars:50 }}</div>
+                    </a>
+                </div>
+            </div>
+            {% if not p.tem_pendente %}
+            <form method="post" action="{% url 'orcamentos:verificar_conflito' %}" class="d-flex flex-wrap gap-2 justify-content-end mt-1">
+                {% csrf_token %}
+                <input type="hidden" name="a" value="{{ p.a.id }}">
+                <input type="hidden" name="b" value="{{ p.b.id }}">
+                <input type="hidden" name="next" value="{{ voltar }}">
+                {% if p.verificado %}
+                <input type="hidden" name="acao" value="desmarcar">
+                <button type="submit" class="btn btn-sm btn-outline-secondary"><i class="fas fa-undo me-1"></i>Desmarcar verificação</button>
+                {% else %}
+                <input type="text" name="observacao" maxlength="200" class="form-control form-control-sm" style="max-width: 260px;"
+                       placeholder="Observação (opcional): ex. temos 2 unidades" aria-label="Observação">
+                <button type="submit" class="btn btn-sm btn-outline-success"><i class="fas fa-check me-1"></i>Marcar como verificado</button>
+                {% endif %}
+            </form>
+            {% endif %}
+        </div>
+    </div>
+    {% endfor %}
+    {% empty %}
+    <div class="text-center text-muted py-5">
+        <i class="fas fa-check-circle fa-3x text-success mb-3"></i>
+        <p class="mb-0">Nenhum conflito de horário no período. 🎉</p>
+    </div>
+    {% endfor %}
+</div>
+{% endblock %}

@@ -12,6 +12,53 @@ from accounts.models import Empresa, ImagemArmazenada, Usuario
 MARGEM_CONFLITO = timedelta(hours=1)
 
 
+def tipo_conflito(intervalo_a, intervalo_b):
+    """
+    Regra única de conflito entre dois eventos (início, fim):
+    'sobrepoe' se os horários se cruzam, 'margem' se ficam a menos de
+    MARGEM_CONFLITO um do outro, ou None se não há conflito.
+    """
+    if not intervalo_a or not intervalo_b:
+        return None
+    (ini_a, fim_a), (ini_b, fim_b) = intervalo_a, intervalo_b
+    if not (ini_b < fim_a + MARGEM_CONFLITO and fim_b > ini_a - MARGEM_CONFLITO):
+        return None
+    return 'sobrepoe' if (ini_b < fim_a and fim_b > ini_a) else 'margem'
+
+
+def itens_alem_do_estoque(orcamento_a, orcamento_b):
+    """
+    Itens dos dois eventos que, somados, passam do estoque da empresa
+    (ex.: "Pula Pula Médio (2 de 1)"). Itens com preço progressivo (balões
+    etc.) são consumo, não entram. Usa os itens já carregados (prefetch).
+    """
+    qtd_a = {}
+    for oi in orcamento_a.itens.all():
+        qtd_a[oi.item_id] = qtd_a.get(oi.item_id, 0) + oi.quantidade
+    faltando = []
+    for oi in orcamento_b.itens.all():
+        item = oi.item
+        if oi.item_id not in qtd_a or item.progressivo:
+            continue
+        total = qtd_a[oi.item_id] + oi.quantidade
+        if total > item.quantidade_estoque:
+            faltando.append(f"{item.nome or item.descricao} ({total} de {item.quantidade_estoque})")
+    return faltando
+
+
+def assinatura_conflito(orcamento_a, intervalo_a, orcamento_b, intervalo_b):
+    """
+    Retrato dos dois eventos (horários + itens/quantidades) no momento em que
+    o conflito foi verificado: se qualquer um mudar, a assinatura muda e o
+    conflito volta a aparecer.
+    """
+    def retrato(o, intervalo):
+        itens = ','.join(f"{oi.item_id}x{oi.quantidade}" for oi in sorted(o.itens.all(), key=lambda x: (x.item_id, x.quantidade)))
+        return f"{o.pk}@{intervalo[0]:%Y%m%d%H%M}-{intervalo[1]:%Y%m%d%H%M}[{itens}]"
+    pares = sorted([(orcamento_a.pk, retrato(orcamento_a, intervalo_a)), (orcamento_b.pk, retrato(orcamento_b, intervalo_b))])
+    return '|'.join(r for _, r in pares)[:500]
+
+
 def arredondar_total(valor):
     """Arredonda o total do orçamento para reais inteiros (548,98 → 549; 548,40 → 548)."""
     return Decimal(str(valor)).quantize(Decimal('1'), rounding=ROUND_HALF_UP).quantize(Decimal('0.01'))
@@ -102,6 +149,56 @@ class Item(models.Model):
     foto = models.ForeignKey(ImagemArmazenada, on_delete=models.SET_NULL, null=True, blank=True, related_name='+')
     exibir_catalogo = models.BooleanField(default=True)  # aparece no catálogo online enviado aos clientes
     inflavel = models.BooleanField(default=False)  # leva o KIT_INFLAVEL na lista de conferência
+    # Quantas unidades a empresa tem: o conflito de "mesmo brinquedo" só é
+    # apontado quando eventos no mesmo horário somam mais que isso
+    quantidade_estoque = models.PositiveIntegerField(default=1)
+
+    # Preço progressivo (ex.: kit de balões): o valor_unitario vale a partir de
+    # prog_quantidade_minima e cai prog_reducao a cada prog_a_cada unidades,
+    # sem passar de prog_preco_minimo. Todos vazios = preço fixo, como sempre.
+    prog_quantidade_minima = models.PositiveIntegerField(null=True, blank=True)
+    prog_a_cada = models.PositiveIntegerField(null=True, blank=True)
+    prog_reducao = models.DecimalField(max_digits=10, decimal_places=2, null=True, blank=True)
+    prog_preco_minimo = models.DecimalField(max_digits=10, decimal_places=2, null=True, blank=True)
+
+    @property
+    def progressivo(self):
+        return bool(self.prog_quantidade_minima and self.prog_a_cada and self.prog_reducao and self.prog_preco_minimo is not None)
+
+    def preco_unitario(self, quantidade=None):
+        """
+        Preço por unidade para a quantidade informada. Ex. (balões): mínimo 10,
+        a cada 10 reduz R$ 0,50, mínimo R$ 5,50 -> 10-19: 8,50 · 20-29: 8,00 ·
+        ... · 70+: 5,50. Sem regra progressiva, é o valor_unitario de sempre.
+        """
+        if not self.progressivo or not quantidade:
+            return Decimal(self.valor_unitario)
+        degraus = max(0, (int(quantidade) - self.prog_quantidade_minima) // self.prog_a_cada)
+        return max(Decimal(self.prog_preco_minimo), Decimal(self.valor_unitario) - degraus * Decimal(self.prog_reducao))
+
+    def faixas_progressivas(self):
+        """[(de, até_ou_None, preço)] para mostrar a tabela de faixas."""
+        if not self.progressivo:
+            return []
+        faixas, de = [], self.prog_quantidade_minima
+        while True:
+            preco = self.preco_unitario(de)
+            if preco <= self.prog_preco_minimo or len(faixas) >= 50:
+                faixas.append((de, None, Decimal(self.prog_preco_minimo)))
+                return faixas
+            faixas.append((de, de + self.prog_a_cada - 1, preco))
+            de += self.prog_a_cada
+
+    def regra_progressiva_json(self):
+        """Mesma regra para o JavaScript (orçamento e catálogo calculam ao vivo)."""
+        if not self.progressivo:
+            return None
+        return {
+            'minimo': self.prog_quantidade_minima,
+            'a_cada': self.prog_a_cada,
+            'reducao': float(self.prog_reducao),
+            'piso': float(self.prog_preco_minimo),
+        }
 
     def itens_conferencia(self):
         """
@@ -265,34 +362,36 @@ class Orcamento(models.Model):
         """
         Eventos confirmados que batem com o horário deste, considerando
         MARGEM_CONFLITO antes e depois (montagem/desmontagem). Retorna uma
-        lista de dicts com o orçamento, o horário e os itens em comum.
+        lista de dicts com o orçamento, o horário e os itens que passam do
+        estoque. Conflitos já marcados como verificados (e sem mudança desde
+        então) ficam de fora.
         """
         meu = self.intervalo()
         if meu is None:
             return []
-        inicio, fim = meu
-        meus_itens = {oi.item_id: oi.item.nome or oi.item.descricao for oi in self.itens.select_related('item')}
+        eu = Orcamento.objects.prefetch_related('itens__item').get(pk=self.pk) if self.pk else self
         candidatos = (
             Orcamento.objects
             .filter(empresa_id=self.empresa_id, status='confirmado',
                     data_evento__range=[self.data_evento - timedelta(days=1), self.data_evento + timedelta(days=1)])
             .exclude(pk=self.pk)
             .select_related('cliente')
-            .prefetch_related('itens')
+            .prefetch_related('itens__item')
         )
+        verificados = ConflitoVerificado.assinaturas(self.empresa_id)
         conflitos = []
         for outro in candidatos:
             dele = outro.intervalo()
-            if dele is None:
+            tipo = tipo_conflito(meu, dele)
+            if not tipo or assinatura_conflito(eu, meu, outro, dele) in verificados:
                 continue
-            if dele[0] < fim + MARGEM_CONFLITO and dele[1] > inicio - MARGEM_CONFLITO:
-                conflitos.append({
-                    'orcamento': outro,
-                    'inicio': dele[0],
-                    'fim': dele[1],
-                    'sobrepoe': dele[0] < fim and dele[1] > inicio,  # horários se cruzam (não só a margem)
-                    'itens_em_comum': [meus_itens[oi.item_id] for oi in outro.itens.all() if oi.item_id in meus_itens],
-                })
+            conflitos.append({
+                'orcamento': outro,
+                'inicio': dele[0],
+                'fim': dele[1],
+                'sobrepoe': tipo == 'sobrepoe',  # horários se cruzam (não só a margem)
+                'itens_em_comum': itens_alem_do_estoque(eu, outro),
+            })
         return sorted(conflitos, key=lambda c: c['inicio'])
 
     @property
@@ -385,3 +484,30 @@ class PreOrcamentoItem(models.Model):
 
     def __str__(self):
         return f"{self.quantidade}x {self.nome}"
+
+
+class ConflitoVerificado(models.Model):
+    """
+    Conflito de horário que a equipe analisou e marcou como ok (ex.: equipe
+    extra contratada). Guarda a assinatura dos dois eventos (horários e
+    itens): se algum mudar, a assinatura não bate mais e o conflito volta.
+    """
+    empresa = models.ForeignKey(Empresa, on_delete=models.CASCADE, related_name='conflitos_verificados')
+    orcamento_a = models.ForeignKey(Orcamento, on_delete=models.CASCADE, related_name='+')
+    orcamento_b = models.ForeignKey(Orcamento, on_delete=models.CASCADE, related_name='+')
+    assinatura = models.CharField(max_length=500)
+    observacao = models.CharField(max_length=200, blank=True)
+    verificado_por = models.ForeignKey(Usuario, on_delete=models.SET_NULL, null=True, blank=True, related_name='+')
+    verificado_em = models.DateTimeField(auto_now=True)
+
+    @classmethod
+    def assinaturas(cls, empresa_id):
+        return set(cls.objects.filter(empresa_id=empresa_id).values_list('assinatura', flat=True))
+
+    def __str__(self):
+        return f"Conflito #{self.orcamento_a_id} x #{self.orcamento_b_id} verificado"
+
+    class Meta:
+        verbose_name = "Conflito verificado"
+        verbose_name_plural = "Conflitos verificados"
+        unique_together = [('orcamento_a', 'orcamento_b')]

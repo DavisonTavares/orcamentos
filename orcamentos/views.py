@@ -11,7 +11,7 @@ from django.db.models import Q, Sum, Count, Max, F
 from django.utils import timezone
 from django.conf import settings
 from django.core.cache import cache
-from datetime import timedelta, datetime
+from datetime import date, timedelta, datetime
 from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
 from django.utils.http import url_has_allowed_host_and_scheme
 import os
@@ -20,7 +20,8 @@ import unicodedata
 
 from .models import (
     Cliente, Item, Orcamento, OrcamentoItem, ChecklistItem, LinkCatalogo, TIPOS_EVENTO, KIT_INFLAVEL,
-    PreOrcamento, PreOrcamentoItem, VALIDADE_PRE_ORCAMENTO_DIAS, MARGEM_CONFLITO,
+    PreOrcamento, PreOrcamentoItem, VALIDADE_PRE_ORCAMENTO_DIAS, MARGEM_CONFLITO, tipo_conflito,
+    ConflitoVerificado, assinatura_conflito, itens_alem_do_estoque,
     arredondar_total, calcular_total,
 )
 from accounts.models import Empresa, Usuario
@@ -29,7 +30,7 @@ from accounts.imagens import responder_imagem
 from .utils import gerar_arquivos, gerar_catalogo, gerar_checklist_conferencia, gerar_recibo, gerar_resumo_festas
 from whatsapp.views import (
     AVISO_NOTA_FISCAL, INTERVALO_ENVIO_EVENTOS, enviar_em_segundo_plano, eventos_em_aberto,
-    formatar_reais, mensagem_pagamento_recebido, normalizar_telefone, status_envio_eventos,
+    formatar_reais, mensagem_pagamento_recebido, mensagem_recibo, normalizar_telefone, status_envio_eventos,
 )
 
 # Decorator personalizado para verificar se o usuário tem acesso à empresa
@@ -76,9 +77,21 @@ def lista_orcamentos(request):
     por_pagina = request.GET.get('por_pagina', '10')
     if por_pagina not in OPCOES_POR_PAGINA:
         por_pagina = '10'
+    pagamento_filter = request.GET.get('pagamento', 'todos')
+    if pagamento_filter not in dict(FILTROS_PAGAMENTO):
+        pagamento_filter = 'todos'
+    quando_filter = request.GET.get('quando', 'todos')
 
     # Base query - apenas orçamentos da empresa do usuário
     orcamentos = Orcamento.objects.filter(empresa=request.user.empresa)
+
+    # Só eventos de hoje em diante
+    if quando_filter == 'futuros':
+        orcamentos = orcamentos.filter(data_evento__gte=timezone.localdate())
+
+    # Sem nenhum pagamento (sinal) dá para filtrar direto no banco
+    if pagamento_filter == 'sem':
+        orcamentos = orcamentos.filter(Q(valor_pago=0) | Q(valor_pago__isnull=True))
 
     # Aplicar filtro de status
     if status_filter != 'all':
@@ -106,13 +119,27 @@ def lista_orcamentos(request):
     # página atual, lá embaixo.
     cabecalhos = list(
         orcamentos.order_by(ordem, '-id')
-        .values_list('id', 'status', 'desconto_geral', 'valor_adicional')
+        .values_list('id', 'status', 'desconto_geral', 'valor_adicional', 'valor_pago', 'data_evento', 'hora_evento')
     )
     totais = _totais_por_orcamento(cabecalhos)
+
+    # Parcial / quitado dependem do total (calculado acima em lote)
+    if pagamento_filter in ('parcial', 'quitado'):
+        def situacao(pago, total):
+            pago = pago or Decimal('0')
+            if pago <= 0:
+                return 'sem'
+            return 'quitado' if pago >= total else 'parcial'
+        cabecalhos = [c for c in cabecalhos if situacao(c[4], totais[c[0]]) == pagamento_filter]
+        totais = {c[0]: totais[c[0]] for c in cabecalhos}
 
     ids = [id_ for id_, *_ in cabecalhos]
     if sort_by in ('valor-maior', 'valor-menor'):
         ids.sort(key=lambda id_: totais[id_], reverse=(sort_by == 'valor-maior'))
+    elif sort_by == 'evento':
+        # Data do evento mais próxima primeiro (desempata pelo horário; sem data vai para o fim)
+        quando = {c[0]: (c[5], c[6]) for c in cabecalhos}
+        ids.sort(key=lambda id_: (quando[id_][0] is None, quando[id_][0] or date.max, str(quando[id_][1] or '')))
 
     # Paginação sobre a lista de ids; só a página atual vem do banco completa
     paginator = Paginator(ids, int(por_pagina))
@@ -139,6 +166,9 @@ def lista_orcamentos(request):
         'opcoes_por_pagina': OPCOES_POR_PAGINA,
         'form': form,
         'status_filter': status_filter,
+        'pagamento_filter': pagamento_filter,
+        'filtros_pagamento': FILTROS_PAGAMENTO,
+        'quando_filter': quando_filter,
         'sort_by': sort_by,
         'search_query': search_query,
         'stats': {
@@ -153,6 +183,8 @@ def lista_orcamentos(request):
 
 
 OPCOES_POR_PAGINA = ['10', '20', '50']
+FILTROS_PAGAMENTO = [('todos', 'Qualquer pagamento'), ('sem', 'Sem pagamento (sem sinal)'),
+                     ('parcial', 'Pagamento parcial'), ('quitado', 'Quitado')]
 
 
 def _totais_por_orcamento(cabecalhos):
@@ -171,7 +203,7 @@ def _totais_por_orcamento(cabecalhos):
 
     return {
         id_: calcular_total(itens_por_orcamento.get(id_, []), desconto_geral, valor_adicional)
-        for id_, _, desconto_geral, valor_adicional in cabecalhos
+        for id_, _, desconto_geral, valor_adicional, *_ in cabecalhos
     }
 
 @login_required
@@ -239,6 +271,7 @@ def novo_orcamento(request):
         "nome": item.nome or item.descricao,
         "descricao": item.descricao,
         "preco": float(item.valor_unitario),
+        "progressivo": item.regra_progressiva_json(),
         "desconto": float(item.desconto or 0),
         "categoria": item.categoria,
         "disponivel": True
@@ -352,7 +385,7 @@ def novo_orcamento(request):
                             orcamento=orcamento,
                             item=item,
                             quantidade=quantidade,
-                            valor=valor_item_com_ajuste(item, tipo_evento),
+                            valor=valor_item_com_ajuste(item, tipo_evento, quantidade),
                             desconto=desconto_efetivo_item(request, item)
                         )
 
@@ -439,6 +472,7 @@ def confirmar_conflito(request):
         "nome": item.nome or item.descricao,
         "descricao": item.descricao,
         "preco": float(item.valor_unitario),
+        "progressivo": item.regra_progressiva_json(),
         "desconto": float(item.desconto or 0),
         "categoria": item.categoria,
         "disponivel": True
@@ -475,13 +509,16 @@ AJUSTE_VALOR_EVENTO_PUBLICO = {
 # orçamento), arredondado pro inteiro mais próximo (sem centavos).
 AJUSTE_BUFFET_FRENTE_DE_LOJA = Decimal('1.35')
 
-def valor_item_com_ajuste(item, tipo_evento):
+def valor_item_com_ajuste(item, tipo_evento, quantidade=None):
     """Aplica o acréscimo automático de evento público (15%/20%) sobre o
     valor de catálogo do item, se o tipo de evento for um dos públicos, e o
     acréscimo de 35% nas máquinas de buffet quando o evento for "Frente de
-    Loja" (arredondado pro inteiro mais próximo)."""
+    Loja" (arredondado pro inteiro mais próximo). Itens com preço progressivo
+    (ex.: balões) partem do preço da faixa da quantidade."""
     fator = AJUSTE_VALOR_EVENTO_PUBLICO.get(tipo_evento, Decimal('1'))
-    valor = Decimal(item.valor_unitario) * fator
+    valor = item.preco_unitario(quantidade) * fator
+    if item.progressivo:
+        valor = valor.quantize(Decimal('0.01'), rounding=ROUND_HALF_UP)
 
     if tipo_evento == "Frente de Loja" and item.categoria == "buffet":
         valor = (valor * AJUSTE_BUFFET_FRENTE_DE_LOJA).to_integral_value(rounding=ROUND_HALF_UP)
@@ -564,7 +601,7 @@ def criar_orcamento(request, clientes, itens, itens_json, ignorar_conflito=False
                         orcamento=orcamento,
                         item=item,
                         quantidade=quantidade,
-                        valor=valor_item_com_ajuste(item, tipo_evento),
+                        valor=valor_item_com_ajuste(item, tipo_evento, quantidade),
                         desconto=desconto_efetivo_item(request, item)
                     )
             except ValueError:
@@ -594,6 +631,7 @@ def editar_orcamento(request, orcamento_id):
         "nome": item.nome or item.descricao,
         "descricao": item.descricao,
         "preco": float(item.valor_unitario),
+        "progressivo": item.regra_progressiva_json(),
         "desconto": float(item.desconto or 0),
         "categoria": item.categoria,
         "disponivel": True
@@ -652,7 +690,7 @@ def editar_orcamento(request, orcamento_id):
                             orcamento=orcamento,
                             item=item,
                             quantidade=quantidade,
-                            valor=valor_item_com_ajuste(item, tipo_evento),
+                            valor=valor_item_com_ajuste(item, tipo_evento, quantidade),
                             desconto=desconto_efetivo_item(request, item)
                         )
                 except ValueError:
@@ -823,7 +861,7 @@ def gerar_catalogo_pdf_view(request):
         dados_catalogo.append({
             "descricao": item.nome or item.descricao,
             "quantidade": quantidade,
-            "valor_unitario": float(valor_item_com_ajuste(item, tipo_evento)),
+            "valor_unitario": float(valor_item_com_ajuste(item, tipo_evento, quantidade)),
             "desconto": float(item.desconto or 0),
         })
 
@@ -957,7 +995,11 @@ def mensagem_status_cliente(orcamento):
     """
     Mensagem de WhatsApp para o cliente conforme o status atual do orçamento.
     Retorna (mensagem, incluir_recibo) ou (None, False) se o status não avisa.
+    Se já houver valor pago, o recibo vai embutido no PDF e a mensagem avisa
+    do recibo e da nota fiscal (igual ao envio de atualização em massa).
     """
+    recibo = mensagem_recibo(orcamento)  # vazio quando não há nenhum pagamento
+    tem_pagamento = bool(recibo)
     nome = orcamento.cliente.nome
     data = orcamento.data_evento.strftime('%d/%m/%Y') if orcamento.data_evento else None
     do_dia = f" do dia *{data}*" if data else ""
@@ -970,15 +1012,17 @@ def mensagem_status_cliente(orcamento):
             "Dá uma conferida nos detalhes e, se estiver tudo certo, é só confirmar com a gente! ✅\n\n"
             "Estamos super animados para fazer do seu evento um momento inesquecível! 🎪✨\n"
             "Qualquer dúvida, é só chamar! 😊\n\n"
-        ), False
+            f"{recibo}"
+        ), tem_pagamento
     if status == 'confirmado':
         return (
             f"🎉 Olá, {nome}!\n\n"
             f"Seu orçamento *#{orcamento.id}* foi *confirmado com sucesso* ✅\n\n"
             "Estamos cuidando de tudo para que seu evento seja incrível! 🎪✨\n"
             "Se tiver qualquer dúvida ou precisar ajustar algo, é só falar com a gente 😊\n\n"
+            f"{recibo}"
             "— Mundo Kids 💙"
-        ), False
+        ), tem_pagamento
     if status == 'concluido':
         # Ao concluir o evento o valor pago vira o total, então vai o recibo de quitação junto
         return (
@@ -996,8 +1040,9 @@ def mensagem_status_cliente(orcamento):
             f"Seu evento{do_dia} (orçamento *#{orcamento.id}*) foi marcado para *reagendamento* 📅\n\n"
             "Em breve entramos em contato para combinar a nova data. "
             "Se você já tiver uma data em mente, é só mandar por aqui!\n\n"
+            f"{recibo}"
             "— Mundo Kids 💙"
-        ), False
+        ), tem_pagamento
     if status == 'cancelado':
         return (
             f"Olá, {nome}.\n\n"
@@ -1374,6 +1419,10 @@ def agendamentos(request):
         'orcamentos_para_concluir': orcamentos_para_concluir,
         'eventos_em_aberto_count': eventos_em_aberto(request.user.empresa).count(),
         'envio_em_andamento': status_envio_eventos(),
+        'conflitos_count': len(conflitos_da_agenda(request.user.empresa, 60)),
+        # Confirmados de hoje em diante sem nenhum pagamento registrado
+        'sem_sinal_count': Orcamento.objects.filter(empresa=request.user.empresa, status='confirmado', data_evento__gte=hoje)
+                           .filter(Q(valor_pago=0) | Q(valor_pago__isnull=True)).count(),
         'intervalo_envio_eventos': INTERVALO_ENVIO_EVENTOS,
         'agendamentos_hoje': agendamentos_hoje,
         'proximos_agendamentos': proximos_agendamentos,
@@ -1734,16 +1783,37 @@ def _itens_catalogo(empresa):
     return Item.objects.filter(empresa=empresa, exibir_catalogo=True, disponivel=True)
 
 
-def _preco_catalogo(item, tipo_evento):
+def _preco_catalogo(item, tipo_evento, quantidade=None):
     """
     Preço do item no catálogo para o tipo de evento: (valor, desconto_%, valor_pix).
     Mesmo cálculo do orçamento, arredondado em reais inteiros. Usado pela
     página e pelo pedido, para o valor gravado ser sempre o que o cliente viu.
+    Itens com preço progressivo (ex.: balões) usam a faixa da quantidade e
+    mantêm os centavos no preço por unidade (só o total é arredondado).
     """
-    valor = arredondar_total(valor_item_com_ajuste(item, tipo_evento))
     desconto = item.desconto or Decimal('0')
+    if item.progressivo:
+        valor = valor_item_com_ajuste(item, tipo_evento, quantidade or item.prog_quantidade_minima)
+        valor_pix = ((valor * (Decimal('100') - desconto) / Decimal('100')).quantize(Decimal('0.01'), rounding=ROUND_HALF_UP)
+                     if desconto > 0 else None)
+        return valor, desconto, valor_pix
+    valor = arredondar_total(valor_item_com_ajuste(item, tipo_evento))
     valor_pix = arredondar_total(valor * (Decimal('100') - desconto) / Decimal('100')) if desconto > 0 else None
     return valor, desconto, valor_pix
+
+
+def _progressivo_catalogo(item, tipo_evento):
+    """Regra progressiva + acréscimo do tipo de evento, para o carrinho calcular e a tabela de faixas."""
+    regra = item.regra_progressiva_json()
+    if not regra:
+        return None, []
+    fator = AJUSTE_VALOR_EVENTO_PUBLICO.get(tipo_evento, Decimal('1'))
+    regra.update(base=float(item.valor_unitario), fator=float(fator))
+    faixas = [
+        (de, ate, (preco * fator).quantize(Decimal('0.01'), rounding=ROUND_HALF_UP))
+        for de, ate, preco in item.faixas_progressivas()
+    ]
+    return regra, faixas
 
 
 def _render_catalogo(request, link, erros=None, dados=None, status=200):
@@ -1751,6 +1821,7 @@ def _render_catalogo(request, link, erros=None, dados=None, status=200):
     secoes = {chave: [] for chave, _ in SECOES_CATALOGO}
     for item in _itens_catalogo(empresa).order_by('nome', 'descricao'):
         valor, desconto, valor_pix = _preco_catalogo(item, link.tipo_evento)
+        progressivo, faixas = _progressivo_catalogo(item, link.tipo_evento)
         nome = item.nome or item.descricao
         chave = 'combo' if 'combo' in _normalizar(nome) else item.categoria
         secoes.setdefault(chave, []).append({
@@ -1761,6 +1832,10 @@ def _render_catalogo(request, link, erros=None, dados=None, status=200):
             'valor': valor,
             'desconto': desconto,
             'valor_pix': valor_pix,
+            'progressivo': json.dumps(progressivo) if progressivo else '',
+            'faixas': faixas,
+            'quantidade_minima': item.prog_quantidade_minima if progressivo else None,
+            'preco_minimo': faixas[-1][2] if faixas else None,
         })
 
     whatsapp = ''.join(c for c in (empresa.whatsapp or '') if c.isdigit())
@@ -1873,9 +1948,15 @@ def catalogo_pedido(request, token):
                 qtd = int(valor)
             except ValueError:
                 continue
-            if 1 <= qtd <= 20:
+            if 1 <= qtd <= 1000:
                 quantidades[int(chave[5:])] = qtd
     itens = list(_itens_catalogo(empresa).filter(id__in=quantidades))
+    for item in list(itens):
+        # Itens normais: até 20 unidades; progressivos (ex.: balões): do mínimo até 1000
+        if item.progressivo:
+            quantidades[item.id] = max(quantidades[item.id], item.prog_quantidade_minima)
+        elif quantidades[item.id] > 20:
+            itens.remove(item)
     if not itens:
         erros.append('Adicione pelo menos um item ao pedido.')
 
@@ -1921,7 +2002,7 @@ def catalogo_pedido(request, token):
     )
     novos_itens = []
     for item in itens:
-        valor, desconto, _ = _preco_catalogo(item, link.tipo_evento)
+        valor, desconto, _ = _preco_catalogo(item, link.tipo_evento, quantidades[item.id])
         novos_itens.append(PreOrcamentoItem(
             pre_orcamento=pre, item=item, nome=item.nome or item.descricao,
             quantidade=quantidades[item.id], valor_unitario=valor, desconto=desconto,
@@ -2039,7 +2120,7 @@ def pre_orcamento_acao(request, pre_id):
             continue
         if vencido:
             # Validade passou: usa o preço atual do item, não o travado no pedido
-            valor, desconto, _ = _preco_catalogo(pi.item, pre.tipo_evento)
+            valor, desconto, _ = _preco_catalogo(pi.item, pre.tipo_evento, pi.quantidade)
         else:
             valor, desconto = pi.valor_unitario, pi.desconto
         OrcamentoItem.objects.create(orcamento=orcamento, item=pi.item, quantidade=pi.quantidade,
@@ -2057,3 +2138,217 @@ def pre_orcamento_acao(request, pre_id):
         aviso += f' Itens que não existem mais e ficaram de fora: {", ".join(sem_item)}.'
     messages.success(request, aviso)
     return redirect('orcamentos:editar_orcamento', orcamento_id=orcamento.id)
+
+
+# ========================== CONFLITOS DE HORÁRIO ==========================
+
+PERIODOS_CONFLITO = [('30', 'Próximos 30 dias'), ('60', 'Próximos 60 dias'), ('90', 'Próximos 90 dias'), ('todos', 'Todos os futuros')]
+
+
+def conflitos_da_agenda(empresa, dias=60, incluir_pendentes=False, incluir_verificados=False):
+    """
+    Pares de eventos com conflito de horário de hoje em diante (mesma regra
+    do alerta ao confirmar: tipo_conflito, com 1h de folga). Carrega tudo numa
+    consulta e compara em memória. Entram pares confirmado x confirmado e,
+    com incluir_pendentes, pendente x confirmado. Conflitos marcados como
+    verificados (sem mudança desde então) só entram com incluir_verificados.
+    """
+    verificados = ConflitoVerificado.assinaturas(empresa.id)
+    hoje = timezone.localdate()
+    status = ['confirmado', 'pendente'] if incluir_pendentes else ['confirmado']
+    eventos = Orcamento.objects.filter(empresa=empresa, status__in=status, data_evento__gte=hoje - timedelta(days=1))
+    if dias:
+        eventos = eventos.filter(data_evento__lte=hoje + timedelta(days=dias + 1))
+    eventos = [
+        (o, o.intervalo()) for o in eventos.select_related('cliente').prefetch_related('itens__item')
+    ]
+    eventos = sorted([e for e in eventos if e[1]], key=lambda e: e[1][0])
+
+    pares = []
+    for i, (a, int_a) in enumerate(eventos):
+        for b, int_b in eventos[i + 1:]:
+            if int_b[0] >= int_a[1] + MARGEM_CONFLITO:
+                break  # ordenados pelo início: os próximos começam ainda mais tarde
+            if 'confirmado' not in (a.status, b.status):
+                continue  # dois pendentes não ocupam a agenda
+            tipo = tipo_conflito(int_a, int_b)
+            if not tipo or max(int_a[1], int_b[1]).date() < hoje:
+                continue
+            assinatura = assinatura_conflito(a, int_a, b, int_b)
+            verificado = assinatura in verificados
+            if verificado and not incluir_verificados:
+                continue
+            pares.append({
+                'data': int_a[0].date(),
+                'a': a, 'inicio_a': int_a[0], 'fim_a': int_a[1],
+                'b': b, 'inicio_b': int_b[0], 'fim_b': int_b[1],
+                'sobrepoe': tipo == 'sobrepoe',
+                'itens_em_comum': itens_alem_do_estoque(a, b),
+                'tem_pendente': 'pendente' in (a.status, b.status),
+                'verificado': verificado,
+            })
+    return pares
+
+
+@login_required
+@acesso_empresa_required
+def conflitos_agenda(request):
+    """Tela com todos os conflitos de horário da agenda, agrupados por dia."""
+    periodo = request.GET.get('periodo', '60')
+    if periodo not in dict(PERIODOS_CONFLITO):
+        periodo = '60'
+    incluir_pendentes = request.GET.get('pendentes') == '1'
+    incluir_verificados = request.GET.get('verificados') == '1'
+    pares = conflitos_da_agenda(request.user.empresa, None if periodo == 'todos' else int(periodo),
+                                incluir_pendentes, incluir_verificados)
+
+    dias = []
+    for par in pares:
+        if not dias or dias[-1]['data'] != par['data']:
+            dias.append({'data': par['data'], 'pares': []})
+        dias[-1]['pares'].append(par)
+
+    return render(request, 'orcamentos/conflitos.html', {
+        'dias': dias,
+        'total': len(pares),
+        'com_mesmo_item': sum(1 for p in pares if p['itens_em_comum']),
+        'periodo': periodo,
+        'periodos': PERIODOS_CONFLITO,
+        'incluir_pendentes': incluir_pendentes,
+        'incluir_verificados': incluir_verificados,
+        'total_verificados': sum(1 for p in pares if p['verificado']),
+        'margem_horas': int(MARGEM_CONFLITO.total_seconds() // 3600),
+        'voltar': request.get_full_path(),
+    })
+
+
+@login_required
+@acesso_empresa_required
+@require_http_methods(["POST"])
+def verificar_conflito(request):
+    """Marca (ou desmarca) um conflito como verificado, guardando o retrato atual dos dois eventos."""
+    empresa = request.user.empresa
+    destino = request.POST.get('next', '')
+    if not url_has_allowed_host_and_scheme(destino, allowed_hosts={request.get_host()}):
+        destino = reverse('orcamentos:conflitos_agenda')
+    try:
+        ids = sorted({int(request.POST.get('a')), int(request.POST.get('b'))})
+    except (TypeError, ValueError):
+        return redirect(destino)
+    if len(ids) != 2:
+        return redirect(destino)
+    a, b = [get_object_or_404(Orcamento.objects.filter(empresa=empresa).prefetch_related('itens__item'), id=i) for i in ids]
+
+    if request.POST.get('acao') == 'desmarcar':
+        ConflitoVerificado.objects.filter(empresa=empresa, orcamento_a=a, orcamento_b=b).delete()
+        messages.info(request, f'Conflito #{a.id} × #{b.id} voltou para a lista.')
+        return redirect(destino)
+
+    int_a, int_b = a.intervalo(), b.intervalo()
+    if not tipo_conflito(int_a, int_b):
+        messages.info(request, 'Esses eventos não estão mais em conflito.')
+        return redirect(destino)
+    ConflitoVerificado.objects.update_or_create(
+        empresa=empresa, orcamento_a=a, orcamento_b=b,
+        defaults={
+            'assinatura': assinatura_conflito(a, int_a, b, int_b),
+            'observacao': request.POST.get('observacao', '').strip()[:200],
+            'verificado_por': request.user,
+        },
+    )
+    messages.success(request, f'Conflito #{a.id} × #{b.id} marcado como verificado. Se algum dos dois mudar, ele volta a aparecer.')
+    return redirect(destino)
+
+
+# ========================== DISPONIBILIDADE DO DIA ==========================
+
+def _pico_de_uso(usos):
+    """
+    Maior quantidade usada ao mesmo tempo, considerando a folga de montagem
+    (MARGEM_CONFLITO): duas festas contam juntas se ficarem a menos disso uma
+    da outra. usos: [(inicio, fim, quantidade)]. Retorna (pico, horário do pico).
+    """
+    pico, quando = 0, None
+    for inicio, _, _ in usos:
+        # o pico sempre começa no início de alguma festa
+        em_uso = sum(q for i, f, q in usos if i < inicio + MARGEM_CONFLITO and f + MARGEM_CONFLITO > inicio)
+        if em_uso > pico:
+            pico, quando = em_uso, inicio
+    return pico, quando
+
+
+@login_required
+@acesso_empresa_required
+def disponibilidade_dia(request):
+    """Brinquedos locados e livres em um dia, considerando o estoque e o horário das festas."""
+    empresa = request.user.empresa
+    hoje = timezone.localdate()
+    try:
+        dia = datetime.strptime(request.GET.get('data', ''), '%Y-%m-%d').date()
+    except ValueError:
+        dia = hoje
+    incluir_pendentes = request.GET.get('pendentes') == '1'
+    todos_itens = request.GET.get('todos') == '1'
+
+    inicio_dia = datetime.combine(dia, datetime.min.time())
+    fim_dia = inicio_dia + timedelta(days=1)
+    status = ['confirmado', 'pendente'] if incluir_pendentes else ['confirmado']
+    eventos = []
+    for o in (Orcamento.objects
+              .filter(empresa=empresa, status__in=status, data_evento__range=[dia - timedelta(days=1), dia])
+              .select_related('cliente').prefetch_related('itens')):
+        intervalo = o.intervalo()
+        # entra se a festa acontece (mesmo que em parte) neste dia — ex.: 23h às 2h do dia anterior
+        if intervalo and intervalo[0] < fim_dia and intervalo[1] > inicio_dia:
+            eventos.append((o, intervalo))
+
+    itens = Item.objects.filter(empresa=empresa)
+    if not todos_itens:
+        itens = itens.filter(categoria__in=CATEGORIAS_EQUIPAMENTO)
+    itens = [i for i in itens.order_by('nome', 'descricao') if not i.progressivo]  # balões etc. são consumo
+
+    locados, livres = [], []
+    for item in itens:
+        festas, pendentes, usos = [], [], []
+        for o, (ini, fim) in eventos:
+            qtd = sum(oi.quantidade for oi in o.itens.all() if oi.item_id == item.id)
+            if not qtd:
+                continue
+            registro = {'orcamento': o, 'inicio': ini, 'fim': fim, 'quantidade': qtd}
+            if o.status == 'confirmado':
+                festas.append(registro)
+                usos.append((ini, fim, qtd))
+            else:
+                pendentes.append(registro)
+        if not festas and not pendentes:
+            livres.append(item)
+            continue
+        pico, quando = _pico_de_uso(usos)
+        locados.append({
+            'item': item,
+            'festas': sorted(festas, key=lambda f: f['inicio']),
+            'pendentes': sorted(pendentes, key=lambda f: f['inicio']),
+            'pico': pico,
+            'pico_em': quando,
+            'livres_no_pico': max(item.quantidade_estoque - pico, 0),
+            'falta': pico > item.quantidade_estoque,
+            'faltam': max(pico - item.quantidade_estoque, 0),
+            'so_pendente': not festas,
+        })
+    # Primeiro os que faltam, depois os em uso, por último os só pedidos em pendentes
+    locados.sort(key=lambda l: (not l['falta'], l['so_pendente'], (l['item'].nome or l['item'].descricao).lower()))
+
+    return render(request, 'orcamentos/disponibilidade_dia.html', {
+        'dia': dia,
+        'hoje': hoje,
+        'dia_anterior': dia - timedelta(days=1),
+        'dia_seguinte': dia + timedelta(days=1),
+        'locados': locados,
+        'livres': livres,
+        'qtd_em_uso': sum(1 for l in locados if not l['so_pendente']),
+        'qtd_falta': sum(1 for l in locados if l['falta']),
+        'qtd_festas': sum(1 for o, _ in eventos if o.status == 'confirmado'),
+        'incluir_pendentes': incluir_pendentes,
+        'todos_itens': todos_itens,
+        'margem_horas': int(MARGEM_CONFLITO.total_seconds() // 3600),
+    })

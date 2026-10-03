@@ -568,8 +568,9 @@
                             <span class="item-badge ${item.disponivel ? 'bg-primary' : 'bg-secondary'}">
                                 ${item.disponivel ? 'Disponível' : 'Indisponível'}
                             </span>
-                            <span class="ms-2 fw-bold text-primary">${(item.desconto && descontoAtivo) ? `<del>${formatarMoeda(item.preco)}</del> ` : ''}${formatarMoeda(item.preco * (1 - ((descontoAtivo ? item.desconto : 0) || 0) / 100))}</span>
+                            <span class="ms-2 fw-bold text-primary">${(item.desconto && descontoAtivo) ? `<del>${formatarMoeda(precoBaseItem(item, quantidade))}</del> ` : ''}${formatarMoeda(precoBaseItem(item, quantidade) * (1 - ((descontoAtivo ? item.desconto : 0) || 0) / 100))}${item.progressivo ? '/un' : ''}</span>
                         </div>
+                        ${item.progressivo ? `<div class="small text-muted mt-1"><i class="fas fa-layer-group me-1"></i>Preço progressivo: mín. ${item.progressivo.minimo} un · cai ${formatarMoeda(item.progressivo.reducao)} a cada ${item.progressivo.a_cada} · até ${formatarMoeda(item.progressivo.piso)}/un</div>` : ''}
                         ${checkboxDesconto}
                     </div>
                     <div class="d-flex align-items-center flex-shrink-0">
@@ -687,6 +688,15 @@
         } else {
             const quantidadeAtual = itemIndex >= 0 ? state.itensSelecionados[itemIndex].quantidade : 0;
             novaQuantidade = Math.max(0, quantidadeAtual + modificador);
+            // Progressivo: o "+" a partir de zero já coloca a quantidade mínima,
+            // e o "-" abaixo do mínimo remove o item
+            if (item.progressivo && novaQuantidade > 0 && novaQuantidade < item.progressivo.minimo) {
+                novaQuantidade = modificador > 0 ? item.progressivo.minimo : 0;
+            }
+        }
+        if (valorDireto !== null && item.progressivo && novaQuantidade > 0 && novaQuantidade < item.progressivo.minimo) {
+            novaQuantidade = item.progressivo.minimo;
+            mostrarToast(`Quantidade mínima de ${item.nome}: ${item.progressivo.minimo}`, 'warning');
         }
 
         if (novaQuantidade > 0) {
@@ -697,6 +707,7 @@
                     id: itemId,
                     nome: item.nome,
                     preco: item.preco,
+                    progressivo: item.progressivo,
                     categoria: item.categoria,
                     desconto: item.desconto || 0,
                     descontoAtivo: true,
@@ -778,9 +789,19 @@
     // ser o mesmo critério usado no backend (views.py) na hora de salvar.
     const AJUSTE_BUFFET_FRENTE_DE_LOJA = 1.35;
 
+    // Preço por unidade da faixa da quantidade (itens com preço progressivo,
+    // ex.: balões). Mesma regra do servidor (Item.preco_unitario).
+    function precoBaseItem(item, quantidade) {
+        const p = item.progressivo;
+        if (!p || !quantidade) return item.preco;
+        const degraus = Math.max(0, Math.floor((quantidade - p.minimo) / p.a_cada));
+        return Math.max(p.piso, item.preco - degraus * p.reducao);
+    }
+
     function valorUnitarioComAjuste(item) {
         const tipoEvento = document.getElementById('tipoEventoSelect').value;
-        let valor = item.preco * obterFatorEventoPublico();
+        let valor = precoBaseItem(item, item.quantidade) * obterFatorEventoPublico();
+        if (item.progressivo) valor = Math.round(valor * 100) / 100;
         if (tipoEvento === 'Frente de Loja' && item.categoria === 'buffet') {
             valor = Math.round(valor * AJUSTE_BUFFET_FRENTE_DE_LOJA);
         }
@@ -819,7 +840,8 @@
         const valorPagoElement = document.getElementById('valorPago');
         const valorPagoInput = parseFloat(document.getElementById('valorPagoInput').value) || 0;
         const custoOperacionalInput = parseFloat(document.getElementById('custoOperacionalInput').value) || 0;
-        const quantidadeItens = state.itensSelecionados.reduce((total, item) => total + item.quantidade, 0);
+        // Itens progressivos (ex.: 50 balões) contam como 1 no custo operacional
+        const quantidadeItens = state.itensSelecionados.reduce((total, item) => total + (item.progressivo ? 1 : item.quantidade), 0);
         const fatorEventoPublico = obterFatorEventoPublico();
 
         const tipoEventoAtual = document.getElementById('tipoEventoSelect').value;
@@ -873,9 +895,6 @@
         if(quantidadeItens != 0){
             document.getElementById('custoOperacionalInput').value = 50 * quantidadeItens;
         }
-        if(valorDescontoItem > 0){
-            subtotalElement.textContent = formatarMoeda(subtotal - valorDescontoItem);
-        } 
     }
 
     // Salvar orçamento - AGORA COM INTEGRAÇÃO REAL

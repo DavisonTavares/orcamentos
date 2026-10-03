@@ -475,6 +475,20 @@
                     <a href="{% url 'orcamentos:resumo_festas' %}" class="btn btn-outline-danger">
                         <i class="fas fa-file-pdf me-2"></i>Resumo de Festas
                     </a>
+                    {% if sem_sinal_count %}
+                    <a href="{% url 'orcamentos:lista_orcamentos' %}?status=confirmado&pagamento=sem&quando=futuros&sort=evento" class="btn btn-danger"
+                       title="Eventos confirmados de hoje em diante sem nenhum pagamento registrado">
+                        <i class="fas fa-hand-holding-usd me-2"></i>Sem sinal ({{ sem_sinal_count }})
+                    </a>
+                    {% endif %}
+                    <a href="{% url 'orcamentos:disponibilidade_dia' %}{% if data_filter %}?data={{ data_filter }}{% endif %}" class="btn btn-outline-primary"
+                       title="Brinquedos locados e livres no dia">
+                        <i class="fas fa-boxes me-2"></i>Disponibilidade
+                    </a>
+                    <a href="{% url 'orcamentos:conflitos_agenda' %}" class="btn {% if conflitos_count %}btn-warning{% else %}btn-outline-secondary{% endif %}"
+                       title="Eventos com horários que se cruzam ou com menos de 1h de intervalo (próximos 60 dias)">
+                        <i class="fas fa-exclamation-triangle me-2"></i>Conflitos{% if conflitos_count %} ({{ conflitos_count }}){% endif %}
+                    </a>
                     {% if envio_em_andamento %}
                     <form method="post" action="{% url 'cancelar_envio_eventos' %}" class="d-inline"
                           onsubmit="return confirm('Cancelar os envios que ainda não saíram?\n\nAs mensagens já enviadas não são desfeitas.')">
@@ -708,6 +722,7 @@
                                 {% else %}status-pendente{% endif %}">
                                 {{ agendamento.get_status_display }}
                             </span>
+                            {% if agendamento.status == 'confirmado' and not agendamento.valor_pago %}<span class="badge bg-danger mt-1" title="Confirmado sem nenhum pagamento registrado"><i class="fas fa-exclamation-circle me-1"></i>Sem sinal</span>{% endif %}
                     </div>
                     {% endfor %}
                 </div>
@@ -757,6 +772,7 @@
                                     </i>
                                     {{ agendamento.get_status_display }}
                                 </span>
+                                {% if agendamento.status == 'confirmado' and not agendamento.valor_pago %}<span class="badge bg-danger mt-1" title="Confirmado sem nenhum pagamento registrado"><i class="fas fa-exclamation-circle me-1"></i>Sem sinal</span>{% endif %}
                                 <!-- Dias restantes -->
                                 <small class="text-muted mt-1">
                                     {% with dias_restantes=agendamento.dias_para_evento %}
