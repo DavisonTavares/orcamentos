@@ -15,7 +15,8 @@ from .models import arredondar_total
 from accounts.imagens import caminho_temporario
 import img2pdf
 from PIL import Image, ImageDraw, ImageFont 
-import tempfile 
+import tempfile
+import uuid
 
 
 
@@ -518,10 +519,8 @@ def gerar_catalogo(itens: List[Dict[str, Any]], empresa=None, titulo: str = "CAT
     try:
         _configurar_branding(empresa)
 
-        media_root = settings.MEDIA_ROOT
-        diretorio_pdf = os.path.join(media_root, 'orcamentos', 'gerados')
-        os.makedirs(diretorio_pdf, exist_ok=True)
-        stamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+        diretorio_pdf = pasta_gerados()
+        stamp = carimbo_arquivo()
         pdf_path = os.path.join(diretorio_pdf, f"catalogo_{stamp}.pdf")
 
         gerar_catalogo_pdf(itens, pdf_path, titulo=titulo)
@@ -529,6 +528,33 @@ def gerar_catalogo(itens: List[Dict[str, Any]], empresa=None, titulo: str = "CAT
     except Exception as e:
         print("Erro ao gerar catálogo:", e)
         return None
+
+
+def carimbo_arquivo():
+    """Data/hora + código aleatório: dois arquivos gerados no mesmo segundo
+    nunca têm o mesmo nome (um download não apaga o arquivo do outro)."""
+    return f"{datetime.now().strftime('%Y-%m-%d_%H-%M-%S')}_{uuid.uuid4().hex[:8]}"
+
+
+def pasta_gerados():
+    """
+    Pasta onde os PDFs/imagens gerados são gravados antes de serem entregues.
+    Usa a pasta temporária do sistema: em hospedagens como o Vercel só ela
+    aceita gravação (media/ é somente leitura e daria "Read-only file system").
+    Os arquivos são gerados na hora e enviados em seguida, então não precisam
+    ficar guardados: arquivos com mais de 1 dia são apagados aqui mesmo.
+    """
+    pasta = os.path.join(tempfile.gettempdir(), "mundokids_gerados")
+    os.makedirs(pasta, exist_ok=True)
+    limite = datetime.now().timestamp() - 3600
+    for nome in os.listdir(pasta):
+        caminho = os.path.join(pasta, nome)
+        try:
+            if os.path.getmtime(caminho) < limite:
+                os.remove(caminho)
+        except OSError:
+            pass  # em uso por outro processo/requisição: fica para a próxima limpeza
+    return pasta
 
 
 def _caminho_imagem_empresa(empresa, campo):
@@ -699,10 +725,8 @@ def gerar_checklist_conferencia(orcamento, empresa=None):
     try:
         _configurar_branding(empresa)
 
-        media_root = settings.MEDIA_ROOT
-        diretorio_pdf = os.path.join(media_root, 'orcamentos', 'gerados')
-        os.makedirs(diretorio_pdf, exist_ok=True)
-        stamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+        diretorio_pdf = pasta_gerados()
+        stamp = carimbo_arquivo()
         pdf_path = os.path.join(diretorio_pdf, f"checklist_orcamento_{orcamento.id}_{stamp}.pdf")
 
         gerar_checklist_conferencia_pdf(orcamento, pdf_path)
@@ -947,10 +971,8 @@ def gerar_resumo_festas(festas, totais, periodo, empresa=None, para_monitores=Fa
     try:
         _configurar_branding(empresa)
 
-        media_root = settings.MEDIA_ROOT
-        diretorio_pdf = os.path.join(media_root, 'orcamentos', 'gerados')
-        os.makedirs(diretorio_pdf, exist_ok=True)
-        stamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+        diretorio_pdf = pasta_gerados()
+        stamp = carimbo_arquivo()
         pdf_path = os.path.join(diretorio_pdf, f"resumo_festas_{stamp}.pdf")
 
         gerar_resumo_festas_pdf(festas, totais, periodo, pdf_path, para_monitores)
@@ -1140,10 +1162,8 @@ def gerar_recibo(orcamento, empresa=None):
     try:
         _configurar_branding(empresa)
 
-        media_root = settings.MEDIA_ROOT
-        diretorio_pdf = os.path.join(media_root, 'orcamentos', 'gerados')
-        os.makedirs(diretorio_pdf, exist_ok=True)
-        stamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+        diretorio_pdf = pasta_gerados()
+        stamp = carimbo_arquivo()
         pdf_path = os.path.join(diretorio_pdf, f"recibo_orcamento_{orcamento.id}_{stamp}.pdf")
 
         gerar_recibo_pdf(orcamento, pdf_path)
@@ -1432,13 +1452,42 @@ def brl(v):
     s = s.replace(",", "X").replace(".", ",").replace("X", ".")  # BR: 1.234,56
     return f"R$ {s}"
 
+PASTA_FONTES = os.path.join(os.path.dirname(os.path.abspath(__file__)), "fonts")
+_FONTES_SISTEMA = {
+    "regular": ["arial.ttf", "DejaVuSans.ttf", "LiberationSans-Regular.ttf"],
+    "negrito": ["arialbd.ttf", "DejaVuSans-Bold.ttf", "LiberationSans-Bold.ttf"],
+    "italico": ["ariali.ttf", "DejaVuSans-Oblique.ttf", "LiberationSans-Italic.ttf"],
+}
+
+
+def fonte(tamanho: int, estilo: str = "regular"):
+    """
+    Fonte para as imagens (PNG) em qualquer servidor: Arial (Windows) ->
+    DejaVu/Liberation (Linux) -> Roboto incluída no projeto (orcamentos/fonts,
+    garante funcionar onde não há fontes instaladas, como no Vercel) -> fonte
+    padrão do Pillow em tamanho escalável.
+    """
+    for nome in _FONTES_SISTEMA.get(estilo, _FONTES_SISTEMA["regular"]):
+        try:
+            return ImageFont.truetype(nome, tamanho)
+        except OSError:
+            continue
+    try:
+        f = ImageFont.truetype(os.path.join(PASTA_FONTES, "Roboto.ttf"), tamanho)
+        f.set_variation_by_name({"negrito": "Bold", "italico": "Regular"}.get(estilo, "Regular"))
+        return f
+    except Exception:
+        return ImageFont.load_default(size=tamanho)
+
+
 def load_font(preferred: List[str], size: int):
     for name in preferred:
         try:
             return ImageFont.truetype(name, size)
         except Exception:
             continue
-    return ImageFont.load_default()
+    negrito = any("bold" in n.lower() or "bd." in n.lower() for n in preferred)
+    return fonte(size, "negrito" if negrito else "regular")
 
 def calcular_totais(itens, desconto_geral_percent, valor_adicional=0.0):
     """
@@ -1895,11 +1944,8 @@ def gerar_arquivos(dados: Dict[str, Any], empresa: Dict[str, str] = BRAND, inclu
         #print(hasattr(empresa, 'cor_principal'))  # Deve retornar True
         #print(hasattr(empresa, 'cor_secundaria')) # Deve retornar True  
         #print(hasattr(empresa, 'cor_acento'))     # Deve retornar True
-        stamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
-        media_root = settings.MEDIA_ROOT
-        diretorio_pdf = os.path.join(media_root, 'orcamentos', 'gerados')
-        # Criar diretório se não existir
-        os.makedirs(diretorio_pdf, exist_ok=True)
+        stamp = carimbo_arquivo()
+        diretorio_pdf = pasta_gerados()
         SAIDAS_DIR = diretorio_pdf
         dados = orcamento_para_dict(dados)
         if(dados.get('status') == 'confirmado'):
@@ -1972,12 +2018,12 @@ def gerar_imagem_orcamento(dados: Dict[str, Any], saida_png: str):
     draw = ImageDraw.Draw(img)
 
     try:
-        font_title = ImageFont.truetype("arialbd.ttf", 32)
-        font_sub = ImageFont.truetype("arial.ttf", 28)
-        font_table_h = ImageFont.truetype("arialbd.ttf", 26)
-        font_table = ImageFont.truetype("arial.ttf", 26)
-        font_total = ImageFont.truetype("arialbd.ttf", 24)
-        font_nota = ImageFont.truetype("ariali.ttf", 18)
+        font_title = fonte(32, "negrito")
+        font_sub = fonte(28, "regular")
+        font_table_h = fonte(26, "negrito")
+        font_table = fonte(26, "regular")
+        font_total = fonte(24, "negrito")
+        font_nota = fonte(18, "italico")
     except:
         font_title = font_sub = font_table_h = font_table = font_total = font_nota = ImageFont.load_default()
 
@@ -2134,11 +2180,11 @@ def gerar_imagem_confirmacao(dados: Dict[str, Any], saida_png: str):
     draw = ImageDraw.Draw(img)
 
     try:
-        font_title = ImageFont.truetype("arialbd.ttf", 32)
-        font_sub = ImageFont.truetype("arial.ttf", 28)
-        font_table_h = ImageFont.truetype("arialbd.ttf", 26)
-        font_table = ImageFont.truetype("arial.ttf", 26)
-        font_total = ImageFont.truetype("arialbd.ttf", 24)
+        font_title = fonte(32, "negrito")
+        font_sub = fonte(28, "regular")
+        font_table_h = fonte(26, "negrito")
+        font_table = fonte(26, "regular")
+        font_total = fonte(24, "negrito")
     except:
         font_title = font_sub = font_table_h = font_table = font_total = ImageFont.load_default()
 

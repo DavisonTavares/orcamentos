@@ -727,6 +727,32 @@ def excluir_orcamento(request, orcamento_id):
     
     return render(request, "orcamentos/confirmar_exclusao.html", {"orcamento": orcamento})
 
+def apagar_arquivos(*caminhos):
+    """Remove arquivos gerados temporariamente (ignora os que já não existem)."""
+    for caminho in caminhos:
+        try:
+            if caminho and os.path.exists(caminho):
+                os.remove(caminho)
+        except OSError:
+            pass
+
+
+def resposta_download(caminho, nome, content_type, *sobras):
+    """
+    Entrega o arquivo gerado para download e apaga do servidor na hora
+    (junto com as sobras, ex.: o PNG gerado junto com o PDF) — o arquivo
+    fica só no dispositivo de quem baixou, nada é guardado aqui.
+    """
+    try:
+        with open(caminho, 'rb') as f:
+            conteudo = f.read()
+    finally:
+        apagar_arquivos(caminho, *sobras)
+    response = HttpResponse(conteudo, content_type=content_type)
+    response['Content-Disposition'] = f'attachment; filename="{nome}"'
+    return response
+
+
 def prefixo_nome_documento(orcamento):
     """Quando o orçamento está confirmado, o documento gerado é uma
     confirmação de agendamento (ver gerar_arquivos), não mais um orçamento
@@ -777,9 +803,7 @@ def gerar_e_baixar_pdf(request, orcamento):
         file_path = pdf 
         filename = f'{prefixo_nome_documento(orcamento)}_{orcamento.cliente.nome}.pdf'
         
-        response = FileResponse(open(file_path, 'rb'), content_type='application/pdf')
-        response['Content-Disposition'] = f'attachment; filename="{filename}"'
-        return response
+        return resposta_download(file_path, filename, 'application/pdf', png)
         
     except Exception as e:
         #print(f"Erro ao gerar PDF: {str(e)}")
@@ -801,13 +825,12 @@ def baixar_png(request, orcamento_id):
         pdf, png = gerar_arquivos(orcamento, empresa)
 
         if not png or not os.path.exists(png):
+            apagar_arquivos(pdf, png)
             messages.error(request, 'Erro ao gerar a imagem do orçamento.')
             return redirect("orcamentos:detalhes_orcamento", orcamento_id=orcamento.id)
 
         filename = f'{prefixo_nome_documento(orcamento)}_{orcamento.cliente.nome}.png'
-        response = FileResponse(open(png, 'rb'), content_type='image/png')
-        response['Content-Disposition'] = f'attachment; filename="{filename}"'
-        return response
+        return resposta_download(png, filename, 'image/png', pdf)
 
     except Exception as e:
         messages.error(request, 'Erro ao gerar a imagem do orçamento.')
@@ -872,9 +895,7 @@ def gerar_catalogo_pdf_view(request):
     if not pdf_path or not os.path.exists(pdf_path):
         return JsonResponse({'erro': 'Não foi possível gerar o PDF.'}, status=500)
 
-    response = FileResponse(open(pdf_path, 'rb'), content_type='application/pdf')
-    response['Content-Disposition'] = 'attachment; filename="catalogo_mundo_kids.pdf"'
-    return response
+    return resposta_download(pdf_path, 'catalogo_mundo_kids.pdf', 'application/pdf')
 
 @login_required
 @acesso_empresa_required
@@ -891,9 +912,7 @@ def gerar_checklist_pdf_view(request, orcamento_id):
         return redirect("orcamentos:detalhes_orcamento", orcamento_id=orcamento_id)
 
     filename = f'Checklist_{orcamento.cliente.nome}.pdf'
-    response = FileResponse(open(pdf_path, 'rb'), content_type='application/pdf')
-    response['Content-Disposition'] = f'attachment; filename="{filename}"'
-    return response
+    return resposta_download(pdf_path, filename, 'application/pdf')
 
 @login_required
 @acesso_empresa_required
@@ -914,9 +933,7 @@ def gerar_recibo_pdf_view(request, orcamento_id):
         return redirect("orcamentos:detalhes_orcamento", orcamento_id=orcamento_id)
 
     filename = f'Recibo_{orcamento.cliente.nome}.pdf'
-    response = FileResponse(open(pdf_path, 'rb'), content_type='application/pdf')
-    response['Content-Disposition'] = f'attachment; filename="{filename}"'
-    return response
+    return resposta_download(pdf_path, filename, 'application/pdf')
 
 @login_required
 @acesso_empresa_required
@@ -1687,9 +1704,7 @@ def resumo_festas(request):
             return redirect('orcamentos:resumo_festas')
         prefixo = "Escala_Monitores" if para_monitores else "Resumo_Festas"
         filename = f"{prefixo}_{data_inicio.strftime('%d-%m')}_a_{data_fim.strftime('%d-%m-%Y')}.pdf"
-        response = FileResponse(open(pdf_path, 'rb'), content_type='application/pdf')
-        response['Content-Disposition'] = f'attachment; filename="{filename}"'
-        return response
+        return resposta_download(pdf_path, filename, 'application/pdf')
 
     context = {
         'festas': festas,

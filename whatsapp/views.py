@@ -997,10 +997,15 @@ def getPDFOrcamentoWhatsApp(request):
 
     orcamento = Orcamento.objects.get(id=orcamento_id, empresa_id=1)
 
-    pdf_path, _ = gerar_arquivos(orcamento, orcamento.empresa)
+    pdf_path, png_path = gerar_arquivos(orcamento, orcamento.empresa)
 
-    with open(pdf_path, "rb") as f:
-        pdf_bytes = f.read()
+    try:
+        with open(pdf_path, "rb") as f:
+            pdf_bytes = f.read()
+    finally:
+        for caminho in (pdf_path, png_path):
+            if caminho and os.path.exists(caminho):
+                os.remove(caminho)
 
     pdf_base64 = base64.b64encode(pdf_bytes).decode("utf-8")
 
@@ -1022,7 +1027,7 @@ def enviarUpdatesWithClientData(phone_number, message_body, orcamentoId, incluir
     Com somente_recibo=True, o PDF enviado é só o recibo (ex.: ao registrar um pagamento).
     """
     webhookN8nHttp = "http://127.0.0.1:5678/webhook/406cf98d-ed17-4b1e-a942-3e8b81edb584"
-    pdf_path = None
+    pdf_path = png_path = None
 
     try:
         # Busca o orçamento
@@ -1033,7 +1038,7 @@ def enviarUpdatesWithClientData(phone_number, message_body, orcamentoId, incluir
             pdf_path = gerar_recibo(orcamento, orcamento.empresa)
             nome_arquivo = f"Recibo_{orcamento.cliente.nome}.pdf"
         else:
-            pdf_path, _ = gerar_arquivos(orcamento, orcamento.empresa, incluir_recibo=incluir_recibo)
+            pdf_path, png_path = gerar_arquivos(orcamento, orcamento.empresa, incluir_recibo=incluir_recibo)
             nome_arquivo = f"Orcamento_{orcamento.cliente.nome}.pdf"
 
         # Lê o PDF e converte para Base64
@@ -1071,9 +1076,9 @@ def enviarUpdatesWithClientData(phone_number, message_body, orcamentoId, incluir
     finally:
         # Remove o arquivo PDF temporário
         try:
-            if pdf_path and os.path.exists(pdf_path):
-                os.remove(pdf_path)
-                print(f"🧹 PDF temporário removido: {pdf_path}")
+            for caminho in (pdf_path, png_path):
+                if caminho and os.path.exists(caminho):
+                    os.remove(caminho)
         except Exception as e:
             print(f"⚠️ Erro ao remover PDF temporário: {str(e)}")
             
