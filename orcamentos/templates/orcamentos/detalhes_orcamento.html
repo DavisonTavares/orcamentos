@@ -320,6 +320,13 @@
                     </div>
                     {% endif %}
 
+                    {% if orcamento.cupom_codigo %}
+                    <div class="summary-item">
+                        <span>Cupom {{ orcamento.cupom_codigo }}</span>
+                        <span class="fw-medium text-success">- R$ {{ desconto_cupom|floatformat:"2g" }}</span>
+                    </div>
+                    {% endif %}
+
                     {% if orcamento.valor_adicional > 0 %}
                     <div class="summary-item">
                         <span>Valor Adicional</span>
@@ -343,6 +350,46 @@
                         <span class="fw-bold">Saldo Devedor</span>
                         <span class="total-price text-danger">R$ {{ saldo_devedor|floatformat:"2g" }}</span>
                     </div>
+                    {% endif %}
+                </div>
+            </div>
+
+            <!-- Cupom de indicação -->
+            <div class="content-container">
+                <div class="content-header">
+                    <h4 class="mb-0"><i class="fas fa-ticket-alt me-2"></i> Cupom</h4>
+                </div>
+                <div class="content-body">
+                    {% if orcamento.cupom_codigo %}
+                    <div class="d-flex justify-content-between align-items-start gap-2">
+                        <div>
+                            <span class="badge bg-primary font-monospace fs-6">{{ orcamento.cupom_codigo }}</span>
+                            <div class="small text-muted mt-1">
+                                {% if orcamento.cupom %}Indicação de <strong>{{ orcamento.cupom.dono_nome }}</strong><br>{% endif %}
+                                Desconto: - R$ {{ desconto_cupom|floatformat:"2g" }}<br>
+                                Comissão ({{ orcamento.cupom_comissao|floatformat:"-2" }}%): R$ {{ orcamento.valor_comissao|floatformat:"2g" }}
+                                {% if orcamento.comissao_paga_em %}<span class="badge bg-success">paga em {{ orcamento.comissao_paga_em|date:"d/m/Y" }}</span>
+                                {% elif orcamento.status == 'concluido' %}<span class="badge bg-warning text-dark">a pagar</span>
+                                {% elif orcamento.status == 'cancelado' %}<span class="badge bg-secondary">sem comissão</span>
+                                {% else %}<span class="badge bg-light text-dark border">vale quando o evento for concluído</span>{% endif %}
+                            </div>
+                        </div>
+                        {% if not orcamento.comissao_paga_em %}
+                        <form method="post" action="{% url 'orcamentos:orcamento_cupom' orcamento.id %}" onsubmit="return confirm('Remover o cupom deste orçamento?')">
+                            {% csrf_token %}
+                            <input type="hidden" name="acao" value="remover">
+                            <button type="submit" class="btn btn-sm btn-outline-danger" title="Remover cupom"><i class="fas fa-times"></i></button>
+                        </form>
+                        {% endif %}
+                    </div>
+                    {% else %}
+                    <form method="post" action="{% url 'orcamentos:orcamento_cupom' orcamento.id %}" class="d-flex gap-2">
+                        {% csrf_token %}
+                        <input type="hidden" name="acao" value="aplicar">
+                        <input type="text" name="codigo" class="form-control font-monospace text-uppercase" placeholder="Código do cupom" maxlength="30" required aria-label="Código do cupom">
+                        <button type="submit" class="btn btn-outline-primary text-nowrap">Aplicar</button>
+                    </form>
+                    <div class="form-text">O desconto entra no total e o dono do cupom ganha a comissão quando o evento for concluído.</div>
                     {% endif %}
                 </div>
             </div>

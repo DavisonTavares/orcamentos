@@ -17,11 +17,13 @@ from django.utils.http import url_has_allowed_host_and_scheme
 import os
 import json
 import unicodedata
+from urllib.parse import quote
 
 from .models import (
     Cliente, Item, Orcamento, OrcamentoItem, ChecklistItem, LinkCatalogo, TIPOS_EVENTO, KIT_INFLAVEL,
     PreOrcamento, PreOrcamentoItem, VALIDADE_PRE_ORCAMENTO_DIAS, MARGEM_CONFLITO, tipo_conflito,
-    ConflitoVerificado, assinatura_conflito, itens_alem_do_estoque,
+    ConflitoVerificado, assinatura_conflito, itens_alem_do_estoque, LeadCatalogo,
+    Cupom, TIPOS_DESCONTO_CUPOM, normalizar_codigo_cupom,
     arredondar_total, calcular_total,
 )
 from accounts.models import Empresa, Usuario
@@ -201,8 +203,12 @@ def _totais_por_orcamento(cabecalhos):
     ):
         itens_por_orcamento.setdefault(orcamento_id, []).append((valor, quantidade, desconto))
 
+    cupons = {
+        id_: (tipo, valor) for id_, tipo, valor in
+        Orcamento.objects.filter(id__in=ids).exclude(cupom_tipo='').values_list('id', 'cupom_tipo', 'cupom_valor')
+    }
     return {
-        id_: calcular_total(itens_por_orcamento.get(id_, []), desconto_geral, valor_adicional)
+        id_: calcular_total(itens_por_orcamento.get(id_, []), desconto_geral, valor_adicional, *cupons.get(id_, ('', 0)))
         for id_, _, desconto_geral, valor_adicional, *_ in cabecalhos
     }
 
@@ -236,13 +242,17 @@ def detalhes_orcamento(request, orcamento_id):
         
         subtotal += total_item
     
-    desconto_geral = subtotal * (orcamento.desconto_geral / 100) if orcamento.desconto_geral else 0
-    total_exato = subtotal - desconto_geral + (orcamento.valor_adicional or 0)
+    partes = orcamento.detalhar_total()
+    desconto_geral = partes['desconto_geral']
+    desconto_cupom = partes['desconto_cupom']
+    total_exato = subtotal - desconto_geral - desconto_cupom + (orcamento.valor_adicional or 0)
     # Mesmo total do resto do sistema (arredondado em reais inteiros); a
-    # diferença de centavos vai para o desconto geral, como no PDF
-    total = float(orcamento.total)
+    # diferença de centavos vai para o desconto geral (ou do cupom), como no PDF
+    total = float(partes['total'])
     if desconto_geral:
         desconto_geral -= Decimal(str(total)) - total_exato
+    elif desconto_cupom:
+        desconto_cupom -= Decimal(str(total)) - total_exato
     desconto_geral = float(f"{desconto_geral:.2f}")
     saldo_devedor = total - float(f"{orcamento.valor_pago:.2f}")
 
@@ -252,6 +262,7 @@ def detalhes_orcamento(request, orcamento_id):
         'subtotal': subtotal,
         'desconto_geral': orcamento.desconto_geral if orcamento.desconto_geral else 0,
         'valor_desconto': desconto_geral,
+        'desconto_cupom': float(f"{desconto_cupom:.2f}"),
         'saldo_devedor': float(f"{saldo_devedor:.2f}"),
         'total': total,
         # Aviso antecipado de outro evento confirmado no mesmo horário (com folga de 1h)
@@ -1831,44 +1842,165 @@ def _progressivo_catalogo(item, tipo_evento):
     return regra, faixas
 
 
-def _render_catalogo(request, link, erros=None, dados=None, status=200):
+# Regras explicadas ao cliente no catálogo (etapas e dúvidas) — ajuste aqui se mudarem
+SINAL_PERCENTUAL = 50
+CHEGADA_MONTAGEM = 'cerca de 1 hora antes'
+LIMITE_LEADS_POR_HORA = 15  # por aparelho/IP, contra spam
+
+
+def _chave_lead(link):
+    return f'catalogo_lead_{link.pk}'
+
+
+def _lead_da_sessao(request, link):
+    """Interessado que já informou os dados da festa neste aparelho (libera os valores)."""
+    lead_id = request.session.get(_chave_lead(link))
+    if not lead_id:
+        return None
+    return LeadCatalogo.objects.filter(pk=lead_id, link=link).first()
+
+
+def _usos_no_dia(empresa, dia):
+    """{item_id: [(inicio, fim, quantidade)]} das festas confirmadas que acontecem no dia."""
+    inicio_dia = datetime.combine(dia, datetime.min.time())
+    fim_dia = inicio_dia + timedelta(days=1)
+    usos = {}
+    for o in (Orcamento.objects.filter(empresa=empresa, status='confirmado',
+                                       data_evento__range=[dia - timedelta(days=1), dia])
+              .prefetch_related('itens')):
+        intervalo = o.intervalo()
+        if not intervalo or not (intervalo[0] < fim_dia and intervalo[1] > inicio_dia):
+            continue
+        for oi in o.itens.all():
+            usos.setdefault(oi.item_id, []).append((intervalo[0], intervalo[1], oi.quantidade))
+    return usos
+
+
+def _chave_cupom(link):
+    return f'catalogo_cupom_{link.pk}'
+
+
+def _cupom_valido(empresa, codigo, ignorar_orcamento=None):
+    """(cupom, '') se o código pode ser usado; (None, motivo) se não."""
+    codigo = normalizar_codigo_cupom(codigo)
+    if not codigo:
+        return None, 'Informe o código do cupom.'
+    cupom = Cupom.objects.filter(empresa=empresa, codigo=codigo).first()
+    if cupom is None:
+        return None, 'Cupom não encontrado. Confira o código.'
+    motivo = cupom.motivo_indisponivel(ignorar_orcamento)
+    return (None, motivo) if motivo else (cupom, '')
+
+
+def _cupom_json(cupom):
+    return {'ok': True, 'codigo': cupom.codigo, 'tipo': cupom.tipo_desconto,
+            'valor': float(cupom.valor_desconto), 'descricao': cupom.descricao_desconto}
+
+
+def _whatsapp_empresa(empresa):
+    whatsapp = ''.join(c for c in (empresa.whatsapp or '') if c.isdigit())
+    if whatsapp and not whatsapp.startswith('55'):
+        whatsapp = '55' + whatsapp
+    return whatsapp
+
+
+def _render_catalogo(request, link, erros=None, dados=None, status=200, lead=None, erros_lead=None, dados_lead=None):
+    """
+    Sem `lead` (o cliente ainda não informou os dados da festa) a página mostra
+    só fotos e nomes — os preços nem chegam ao navegador. Com `lead`, mostra
+    valores e a disponibilidade de cada brinquedo na data da festa.
+    """
     empresa = link.empresa
+    usos = _usos_no_dia(empresa, lead.data_evento) if lead else {}
     secoes = {chave: [] for chave, _ in SECOES_CATALOGO}
+    qtd_livres = qtd_reservados = 0
+    tem_pix = tem_progressivo = False
     for item in _itens_catalogo(empresa).order_by('nome', 'descricao'):
-        valor, desconto, valor_pix = _preco_catalogo(item, link.tipo_evento)
-        progressivo, faixas = _progressivo_catalogo(item, link.tipo_evento)
         nome = item.nome or item.descricao
         chave = 'combo' if 'combo' in _normalizar(nome) else item.categoria
-        secoes.setdefault(chave, []).append({
+        dados_item = {
             'id': item.id,
             'nome': nome,
             'descricao': item.descricao if item.nome and item.descricao != item.nome else '',
             'foto_id': item.foto_id,
-            'valor': valor,
-            'desconto': desconto,
-            'valor_pix': valor_pix,
-            'progressivo': json.dumps(progressivo) if progressivo else '',
-            'faixas': faixas,
-            'quantidade_minima': item.prog_quantidade_minima if progressivo else None,
-            'preco_minimo': faixas[-1][2] if faixas else None,
-        })
-
-    whatsapp = ''.join(c for c in (empresa.whatsapp or '') if c.isdigit())
-    if whatsapp and not whatsapp.startswith('55'):
-        whatsapp = '55' + whatsapp
+        }
+        if lead:
+            valor, desconto, valor_pix = _preco_catalogo(item, link.tipo_evento)
+            progressivo, faixas = _progressivo_catalogo(item, link.tipo_evento)
+            disponibilidade = ''
+            if not progressivo and item.categoria in CATEGORIAS_EQUIPAMENTO:
+                pico, _ = _pico_de_uso(usos.get(item.id, []))
+                disponibilidade = 'reservado' if pico >= item.quantidade_estoque else 'livre'
+                if disponibilidade == 'livre':
+                    qtd_livres += 1
+                else:
+                    qtd_reservados += 1
+            tem_pix = tem_pix or bool(desconto)
+            tem_progressivo = tem_progressivo or bool(progressivo)
+            dados_item.update({
+                'valor': valor,
+                'desconto': desconto,
+                'valor_pix': valor_pix,
+                'progressivo': json.dumps(progressivo) if progressivo else '',
+                'faixas': faixas,
+                'quantidade_minima': item.prog_quantidade_minima if progressivo else None,
+                'preco_minimo': faixas[-1][2] if faixas else None,
+                'disponibilidade': disponibilidade,
+            })
+        secoes.setdefault(chave, []).append(dados_item)
 
     return render(request, 'orcamentos/catalogo_publico.html', {
         'empresa': empresa,
         'token': link.token,
         'logo_id': empresa.logo_img_id,
         'secoes': [(titulo, secoes[chave]) for chave, titulo in SECOES_CATALOGO if secoes.get(chave)],
-        'whatsapp': whatsapp,
+        'whatsapp': _whatsapp_empresa(empresa),
         'cor': empresa.cor_principal or '#2463EB',
         'hoje': timezone.localdate().isoformat(),
         'validade_dias': VALIDADE_PRE_ORCAMENTO_DIAS,
+        'sinal_percentual': SINAL_PERCENTUAL,
+        'chegada_montagem': CHEGADA_MONTAGEM,
+        'lead': lead,
+        'qtd_livres': qtd_livres,
+        'qtd_reservados': qtd_reservados,
+        'tem_pix': tem_pix,
+        'tem_progressivo': tem_progressivo,
         'erros': erros or [],
         'dados': dados or {},
+        'erros_lead': erros_lead or [],
+        'cupom_inicial': _cupom_inicial(request, link, dados),
+        'dados_lead': dados_lead or ({
+            'nome': lead.nome, 'telefone': lead.telefone,
+            'data_evento': lead.data_evento.isoformat(), 'local': lead.local,
+        } if lead else {}),
     }, status=status)
+
+
+def _cupom_inicial(request, link, dados=None):
+    """Cupom já informado (no pedido com erro ou pelo link ?cupom=), para vir aplicado na tela."""
+    codigo = (dados or {}).get('cupom') or request.session.get(_chave_cupom(link), '')
+    if not codigo:
+        return ''
+    cupom, _ = _cupom_valido(link.empresa, codigo)
+    return json.dumps(_cupom_json(cupom)) if cupom else ''
+
+
+def catalogo_cupom(request, token):
+    """Confere um cupom digitado no catálogo (o desconto aparece no total na hora)."""
+    link = _link_ativo_ou_404(token)
+    if request.GET.get('remover'):
+        request.session.pop(_chave_cupom(link), None)
+        return JsonResponse({'ok': True})
+    chave_limite = f"catalogo_cupons_{_ip_cliente(request)}"
+    tentativas = cache.get(chave_limite, 0)
+    if tentativas >= 40:  # evita ficar "chutando" códigos
+        return JsonResponse({'ok': False, 'erro': 'Muitas tentativas. Tente de novo mais tarde.'}, status=429)
+    cache.set(chave_limite, tentativas + 1, 3600)
+    cupom, erro = _cupom_valido(link.empresa, request.GET.get('codigo', ''))
+    if not cupom:
+        return JsonResponse({'ok': False, 'erro': erro})
+    request.session[_chave_cupom(link)] = cupom.codigo
+    return JsonResponse(_cupom_json(cupom))
 
 
 def catalogo_publico(request, token):
@@ -1878,7 +2010,98 @@ def catalogo_publico(request, token):
     """
     link = _link_ativo_ou_404(token)
     LinkCatalogo.objects.filter(pk=link.pk).update(acessos=F('acessos') + 1)
-    return _render_catalogo(request, link)
+    if request.GET.get('cupom'):
+        # Link divulgado pelo funcionário (…/catalogo/<token>/?cupom=JOAO10): o cupom já vem preenchido
+        request.session[_chave_cupom(link)] = normalizar_codigo_cupom(request.GET['cupom'])
+    lead = _lead_da_sessao(request, link)
+    if lead:
+        # Voltou a olhar o catálogo: conta uma visita por dia (a equipe vê quem está "quente")
+        hoje = timezone.localdate().isoformat()
+        if request.session.get('catalogo_visita_em') != hoje:
+            request.session['catalogo_visita_em'] = hoje
+            LeadCatalogo.objects.filter(pk=lead.pk).update(visitas=F('visitas') + 1, atualizado_em=timezone.now())
+    return _render_catalogo(request, link, lead=lead)
+
+
+@require_http_methods(["POST"])
+def catalogo_liberar(request, token):
+    """
+    Etapa 1 do catálogo: o cliente informa nome, WhatsApp, data e local da
+    festa e passa a ver os valores. Fica registrado como interessado (lead).
+    Também serve para alterar esses dados depois.
+    """
+    link = _link_ativo_ou_404(token)
+    empresa = link.empresa
+    post = request.POST
+    if post.get('website'):  # campo invisível: só robôs preenchem
+        return redirect('catalogo:publico', token=token)
+
+    dados = {campo: post.get(campo, '').strip() for campo in ('nome', 'telefone', 'data_evento', 'local')}
+    lead = _lead_da_sessao(request, link)
+    erros = []
+    chave_limite = f"catalogo_leads_{_ip_cliente(request)}"
+    if cache.get(chave_limite, 0) >= LIMITE_LEADS_POR_HORA:
+        erros.append('Muitas tentativas deste aparelho na última hora. Fale com a gente pelo WhatsApp. 😊')
+    if len(dados['nome']) < 2:
+        erros.append('Informe o seu nome.')
+    telefone = normalizar_telefone(dados['telefone']) or ''
+    if len(telefone) not in (10, 11):
+        erros.append('Informe um WhatsApp válido, com DDD.')
+    data_evento = None
+    try:
+        data_evento = datetime.strptime(dados['data_evento'], '%Y-%m-%d').date()
+        hoje = timezone.localdate()
+        if not (hoje <= data_evento <= hoje + timedelta(days=730)):
+            erros.append('Escolha uma data de festa a partir de hoje.')
+    except ValueError:
+        erros.append('Informe a data da festa.')
+    if len(dados['local']) < 3:
+        erros.append('Informe o bairro e a cidade da festa.')
+    if erros:
+        return _render_catalogo(request, link, lead=lead, erros_lead=erros, dados_lead=dados, status=400)
+
+    cache.set(chave_limite, cache.get(chave_limite, 0) + 1, 3600)
+    telefone = _formatar_telefone(telefone)
+    if lead is None or lead.status not in ('novo', 'contatado'):
+        # Mesmo contato e mesma data (outro aparelho ou de novo): reaproveita o registro
+        lead = LeadCatalogo.objects.filter(empresa=empresa, link=link, telefone=telefone, data_evento=data_evento,
+                                           status__in=['novo', 'contatado']).first()
+        if lead:
+            lead.visitas += 1
+        else:
+            lead = LeadCatalogo(empresa=empresa, link=link, tipo_evento=link.tipo_evento)
+    lead.nome = dados['nome'][:100]
+    lead.telefone = telefone
+    lead.data_evento = data_evento
+    lead.local = dados['local'][:150]
+    lead.save()
+    request.session[_chave_lead(link)] = lead.pk
+    request.session['catalogo_visita_em'] = timezone.localdate().isoformat()
+    return redirect(reverse('catalogo:publico', args=[token]) + '#brinquedos')
+
+
+@require_http_methods(["POST"])
+def catalogo_interesse(request, token):
+    """Guarda o carrinho atual do interessado (o que ele chegou a escolher, mesmo sem enviar)."""
+    link = _link_ativo_ou_404(token)
+    lead = _lead_da_sessao(request, link)
+    if not lead or lead.status not in ('novo', 'contatado'):
+        return JsonResponse({'ok': False})
+    try:
+        recebidos = json.loads(request.body or b'{}').get('itens', {})
+    except (ValueError, AttributeError):
+        recebidos = {}
+    validos = set(_itens_catalogo(link.empresa).values_list('id', flat=True))
+    itens = {}
+    for chave, qtd in (recebidos.items() if isinstance(recebidos, dict) else []):
+        try:
+            chave, qtd = int(chave), int(qtd)
+        except (TypeError, ValueError):
+            continue
+        if chave in validos and 0 < qtd <= 1000:
+            itens[chave] = qtd
+    LeadCatalogo.objects.filter(pk=lead.pk).update(interesse=json.dumps(itens), atualizado_em=timezone.now())
+    return JsonResponse({'ok': True})
 
 
 def _servir_foto(imagem):
@@ -1942,9 +2165,14 @@ def catalogo_pedido(request, token):
     """Recebe o carrinho + dados da festa enviados pelo cliente no catálogo."""
     link = _link_ativo_ou_404(token)
     empresa = link.empresa
+    lead = _lead_da_sessao(request, link)
+    if lead is None:  # precisa passar pela etapa 1 (dados da festa) antes
+        return redirect('catalogo:publico', token=token)
     post = request.POST
     dados = {campo: post.get(campo, '').strip() for campo in
-             ('nome', 'telefone', 'data_evento', 'hora_evento', 'periodo_evento', 'endereco', 'observacoes')}
+             ('hora_evento', 'periodo_evento', 'endereco', 'observacoes', 'cupom')}
+    # Nome, WhatsApp e data vêm da etapa 1
+    dados.update(nome=lead.nome, telefone=lead.telefone, data_evento=lead.data_evento.isoformat())
     erros = []
 
     # Campo invisível: pessoas não veem nem preenchem; robôs costumam preencher
@@ -1996,9 +2224,18 @@ def catalogo_pedido(request, token):
         dados['periodo_evento'] = '3'
     if len(dados['endereco']) < 5:
         erros.append('Informe o endereço da festa.')
+    cupom = None
+    if dados['cupom']:
+        cupom, erro_cupom = _cupom_valido(empresa, dados['cupom'])
+        if erro_cupom:
+            erros.append(f'Cupom {normalizar_codigo_cupom(dados["cupom"])}: {erro_cupom} Remova-o para enviar.')
 
     if erros:
-        return _render_catalogo(request, link, erros=erros, dados=dados, status=400)
+        return _render_catalogo(request, link, erros=erros, dados=dados, status=400, lead=lead)
+
+    # O bairro/cidade foi informado na etapa 1; completa o endereço se não foi repetido
+    if lead.local and _normalizar(lead.local) not in _normalizar(dados['endereco']):
+        dados['endereco'] = f"{dados['endereco']} - {lead.local}"
 
     cache.set(chave_limite, cache.get(chave_limite, 0) + 1, 3600)
     pre = PreOrcamento.objects.create(
@@ -2014,6 +2251,11 @@ def catalogo_pedido(request, token):
         endereco=dados['endereco'][:500],
         observacoes=dados['observacoes'][:1000],
         validade_ate=timezone.now() + timedelta(days=VALIDADE_PRE_ORCAMENTO_DIAS),
+        cupom=cupom,
+        cupom_codigo=cupom.codigo if cupom else '',
+        cupom_tipo=cupom.tipo_desconto if cupom else '',
+        cupom_valor=cupom.valor_desconto if cupom else 0,
+        cupom_comissao=cupom.comissao_percentual if cupom else 0,
     )
     novos_itens = []
     for item in itens:
@@ -2023,6 +2265,10 @@ def catalogo_pedido(request, token):
             quantidade=quantidades[item.id], valor_unitario=valor, desconto=desconto,
         ))
     PreOrcamentoItem.objects.bulk_create(novos_itens)
+    lead.status = 'convertido'
+    lead.pre_orcamento = pre
+    lead.interesse = json.dumps({item.id: quantidades[item.id] for item in itens})
+    lead.save(update_fields=['status', 'pre_orcamento', 'interesse', 'atualizado_em'])
     return redirect('catalogo:pedido_enviado', token=token, codigo=pre.codigo)
 
 
@@ -2030,17 +2276,16 @@ def catalogo_pedido_enviado(request, token, codigo):
     """Confirmação para o cliente (só quem tem o código do pedido vê)."""
     pre = get_object_or_404(PreOrcamento.objects.select_related('empresa'), codigo=codigo, link__token=token)
     empresa = pre.empresa
-    whatsapp = ''.join(c for c in (empresa.whatsapp or '') if c.isdigit())
-    if whatsapp and not whatsapp.startswith('55'):
-        whatsapp = '55' + whatsapp
     return render(request, 'orcamentos/catalogo_pedido_enviado.html', {
         'pre': pre,
         'itens': pre.itens.all(),
         'empresa': empresa,
         'token': token,
         'logo_id': empresa.logo_img_id,
-        'whatsapp': whatsapp,
+        'whatsapp': _whatsapp_empresa(empresa),
         'cor': empresa.cor_principal or '#2463EB',
+        'sinal_percentual': SINAL_PERCENTUAL,
+        'chegada_montagem': CHEGADA_MONTAGEM,
     })
 
 
@@ -2068,24 +2313,57 @@ def _avisos_disponibilidade(empresa, pres):
 @login_required
 @acesso_empresa_required
 def pre_orcamentos(request):
-    """Tela da equipe: pedidos recebidos pelo catálogo."""
-    status = request.GET.get('status', 'novo')
-    if status not in dict(PreOrcamento.STATUS_CHOICES):
-        status = 'novo'
-    pres = list(
-        PreOrcamento.objects.filter(empresa=request.user.empresa, status=status)
-        .select_related('cliente', 'orcamento').prefetch_related('itens')[:100]
-    )
-    if status == 'novo':
-        _avisos_disponibilidade(request.user.empresa, pres)
+    """Tela da equipe: pedidos recebidos pelo catálogo e interessados que só viram os valores."""
+    empresa = request.user.empresa
     contagem = dict(
-        PreOrcamento.objects.filter(empresa=request.user.empresa).values_list('status').annotate(n=Count('id'))
+        PreOrcamento.objects.filter(empresa=empresa).values_list('status').annotate(n=Count('id'))
     )
+    leads_abertos = LeadCatalogo.objects.filter(empresa=empresa, status__in=['novo', 'contatado'])
+    qtd_interessados = leads_abertos.count()
+    status = request.GET.get('status') or ('interessados' if not contagem.get('novo') and qtd_interessados else 'novo')
+    if status != 'interessados' and status not in dict(PreOrcamento.STATUS_CHOICES):
+        status = 'novo'
+
+    pres, leads = [], []
+    if status == 'interessados':
+        leads = list(leads_abertos.order_by('-status', '-atualizado_em')[:100])  # novos antes dos já contatados
+        ids = {i for lead in leads for i in lead.quantidades_interesse()}
+        nomes = {i.id: i.nome or i.descricao for i in Item.objects.filter(empresa=empresa, id__in=ids)}
+        for lead in leads:
+            lead.itens_interesse = [(nomes[i], q) for i, q in lead.quantidades_interesse().items() if i in nomes]
+            texto = (f"Olá, {lead.nome.split()[0]}! Aqui é da {empresa.nome} 😊 Vi que você olhou nosso catálogo "
+                     f"para a festa do dia {lead.data_evento:%d/%m}. Posso te ajudar a montar o orçamento?")
+            lead.whatsapp_url = f"https://wa.me/55{normalizar_telefone(lead.telefone)}?text={quote(texto)}"
+    else:
+        pres = list(
+            PreOrcamento.objects.filter(empresa=empresa, status=status)
+            .select_related('cliente', 'orcamento').prefetch_related('itens')[:100]
+        )
+        if status == 'novo':
+            _avisos_disponibilidade(empresa, pres)
+    abas = [('interessados', 'Interessados', qtd_interessados)]
+    abas += [(chave, nome, contagem.get(chave, 0)) for chave, nome in PreOrcamento.STATUS_CHOICES]
     return render(request, 'orcamentos/pre_orcamentos.html', {
         'pres': pres,
+        'leads': leads,
         'status': status,
-        'abas': [(chave, nome, contagem.get(chave, 0)) for chave, nome in PreOrcamento.STATUS_CHOICES],
+        'abas': abas,
     })
+
+
+@login_required
+@acesso_empresa_required
+@require_http_methods(["POST"])
+def lead_acao(request, lead_id):
+    """Marcar um interessado como contatado, descartar ou voltar para novo."""
+    lead = get_object_or_404(LeadCatalogo.objects.filter(empresa=request.user.empresa), id=lead_id)
+    novo_status = {'contatado': 'contatado', 'descartar': 'descartado', 'reabrir': 'novo'}.get(request.POST.get('acao'))
+    if novo_status and lead.status != 'convertido':
+        lead.status = novo_status
+        lead.save(update_fields=['status', 'atualizado_em'])
+        if novo_status == 'descartado':
+            messages.warning(request, f'Interessado {lead.nome} descartado.')
+    return redirect(f"{reverse('orcamentos:pre_orcamentos')}?status=interessados")
 
 
 @login_required
@@ -2127,6 +2405,11 @@ def pre_orcamento_acao(request, pre_id):
         endereco=pre.endereco,
         observacoes=observacoes,
         status='pendente',
+        cupom=pre.cupom,
+        cupom_codigo=pre.cupom_codigo,
+        cupom_tipo=pre.cupom_tipo,
+        cupom_valor=pre.cupom_valor,
+        cupom_comissao=pre.cupom_comissao,
     )
     sem_item = []
     for pi in pre.itens.select_related('item'):
@@ -2367,3 +2650,158 @@ def disponibilidade_dia(request):
         'todos_itens': todos_itens,
         'margem_horas': int(MARGEM_CONFLITO.total_seconds() // 3600),
     })
+
+
+# ========================== CUPONS DE INDICAÇÃO ==========================
+
+def _decimal_post(valor):
+    try:
+        return Decimal((valor or '').replace(',', '.').strip())
+    except (InvalidOperation, AttributeError):
+        return None
+
+
+@login_required
+@acesso_empresa_required
+def cupons(request):
+    """
+    Cupons dos funcionários e as comissões: o cliente ganha desconto e o dono
+    do cupom ganha uma % do total do evento, que só conta com o evento concluído.
+    """
+    empresa = request.user.empresa
+    lista = list(Cupom.objects.filter(empresa=empresa))
+    orcamentos = list(
+        Orcamento.objects.filter(empresa=empresa, cupom__isnull=False).exclude(status='cancelado')
+        .select_related('cliente', 'cupom').prefetch_related('itens').order_by('data_evento')
+    )
+    por_cupom = {c.id: {'usos': 0, 'a_pagar': [], 'valor_a_pagar': Decimal('0'), 'previsto': Decimal('0'),
+                        'pago': Decimal('0'), 'vendido': Decimal('0')} for c in lista}
+    for o in orcamentos:
+        resumo = por_cupom.get(o.cupom_id)
+        if resumo is None:
+            continue
+        resumo['usos'] += 1
+        if o.status == 'concluido':
+            resumo['vendido'] += o.total
+            if o.comissao_paga_em:
+                resumo['pago'] += o.valor_comissao
+            else:
+                resumo['a_pagar'].append(o)
+                resumo['valor_a_pagar'] += o.valor_comissao
+        elif o.status in ('confirmado', 'reagendar'):
+            resumo['previsto'] += o.valor_comissao
+    for c in lista:
+        c.resumo = por_cupom[c.id]
+
+    return render(request, 'orcamentos/cupons.html', {
+        'cupons': lista,
+        'tipos_desconto': TIPOS_DESCONTO_CUPOM,
+        'links': LinkCatalogo.objects.filter(empresa=empresa, ativo=True).order_by('tipo_evento'),
+        'url_base': getattr(settings, 'CATALOGO_URL_BASE', '').rstrip('/') or request.build_absolute_uri('/').rstrip('/'),
+        'total_a_pagar': sum((c.resumo['valor_a_pagar'] for c in lista), Decimal('0')),
+        'total_previsto': sum((c.resumo['previsto'] for c in lista), Decimal('0')),
+    })
+
+
+@login_required
+@acesso_empresa_required
+@require_http_methods(["POST"])
+def cupom_salvar(request):
+    """Cria ou edita um cupom."""
+    empresa = request.user.empresa
+    post = request.POST
+    cupom = None
+    if post.get('cupom_id'):
+        cupom = get_object_or_404(Cupom.objects.filter(empresa=empresa), id=post['cupom_id'])
+    codigo = normalizar_codigo_cupom(post.get('codigo'))
+    dono = post.get('dono_nome', '').strip()
+    tipo = post.get('tipo_desconto')
+    valor = _decimal_post(post.get('valor_desconto'))
+    comissao = _decimal_post(post.get('comissao_percentual'))
+    erros = []
+    if len(codigo) < 3:
+        erros.append('O código precisa ter pelo menos 3 letras ou números.')
+    elif Cupom.objects.filter(empresa=empresa, codigo=codigo).exclude(pk=getattr(cupom, 'pk', None)).exists():
+        erros.append(f'Já existe um cupom com o código {codigo}.')
+    if not dono:
+        erros.append('Informe o dono do cupom.')
+    if tipo not in dict(TIPOS_DESCONTO_CUPOM):
+        erros.append('Escolha o tipo de desconto.')
+    if valor is None or valor <= 0 or (tipo == 'percentual' and valor > 100):
+        erros.append('Informe um desconto válido (em % até 100, ou em R$).')
+    if comissao is None or not (0 <= comissao <= 100):
+        erros.append('Informe a comissão do dono em % (de 0 a 100).')
+    validade = None
+    if post.get('validade_ate'):
+        try:
+            validade = datetime.strptime(post['validade_ate'], '%Y-%m-%d').date()
+        except ValueError:
+            erros.append('Data de validade inválida.')
+    limite = post.get('limite_usos', '').strip()
+    if limite and not limite.isdigit():
+        erros.append('O limite de usos deve ser um número inteiro.')
+    if erros:
+        for erro in erros:
+            messages.error(request, erro)
+        return redirect('orcamentos:cupons')
+
+    cupom = cupom or Cupom(empresa=empresa)
+    cupom.codigo = codigo
+    cupom.dono_nome = dono[:100]
+    cupom.dono_telefone = post.get('dono_telefone', '').strip()[:20]
+    cupom.tipo_desconto = tipo
+    cupom.valor_desconto = valor
+    cupom.comissao_percentual = comissao
+    cupom.validade_ate = validade
+    cupom.limite_usos = int(limite) if limite else None
+    cupom.save()
+    messages.success(request, f'Cupom {cupom.codigo} salvo. Orçamentos que já usam o cupom mantêm as regras de quando foi aplicado.')
+    return redirect('orcamentos:cupons')
+
+
+@login_required
+@acesso_empresa_required
+@require_http_methods(["POST"])
+def cupom_acao(request, cupom_id):
+    """Ativar/desativar o cupom ou registrar o pagamento das comissões pendentes."""
+    cupom = get_object_or_404(Cupom.objects.filter(empresa=request.user.empresa), id=cupom_id)
+    acao = request.POST.get('acao')
+    if acao == 'alternar':
+        cupom.ativo = not cupom.ativo
+        cupom.save(update_fields=['ativo'])
+        messages.success(request, f'Cupom {cupom.codigo} {"ativado" if cupom.ativo else "desativado"}.')
+    elif acao == 'pagar':
+        ids = [int(i) for i in request.POST.getlist('orcamentos') if i.isdigit()]
+        pendentes = Orcamento.objects.filter(cupom=cupom, status='concluido', comissao_paga_em__isnull=True, id__in=ids)
+        valor = sum((o.valor_comissao for o in pendentes.prefetch_related('itens')), Decimal('0'))
+        qtd = pendentes.update(comissao_paga_em=timezone.now())
+        if qtd:
+            messages.success(request, f'Comissão de {cupom.dono_nome} registrada como paga: '
+                                      f'R$ {valor:.2f} ({qtd} evento{"s" if qtd > 1 else ""}).'.replace('.', ',', 1))
+    return redirect('orcamentos:cupons')
+
+
+@login_required
+@acesso_empresa_required
+@require_http_methods(["POST"])
+def orcamento_cupom(request, orcamento_id):
+    """Aplicar ou remover o cupom de um orçamento (tela de detalhes)."""
+    orcamento = get_object_or_404(Orcamento.objects.filter(empresa=request.user.empresa), id=orcamento_id)
+    if request.POST.get('acao') == 'remover':
+        if orcamento.comissao_paga_em:
+            messages.error(request, 'A comissão deste cupom já foi paga; ele não pode mais ser removido.')
+        else:
+            codigo = orcamento.cupom_codigo
+            orcamento.remover_cupom()
+            orcamento.save()
+            messages.success(request, f'Cupom {codigo} removido do orçamento.')
+    else:
+        cupom, erro = _cupom_valido(request.user.empresa, request.POST.get('codigo', ''), ignorar_orcamento=orcamento)
+        if erro:
+            messages.error(request, erro)
+        else:
+            orcamento.aplicar_cupom(cupom)
+            orcamento.save()
+            messages.success(request, f'Cupom {cupom.codigo} aplicado: {cupom.descricao_desconto} '
+                                      f'(comissão de {cupom.comissao_percentual.normalize():f}% para {cupom.dono_nome}).')
+    return redirect('orcamentos:detalhes_orcamento', orcamento_id=orcamento.id)

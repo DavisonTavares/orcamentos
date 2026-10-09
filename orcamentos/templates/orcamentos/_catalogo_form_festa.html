@@ -1,0 +1,35 @@
+<form method="post" action="{% url 'catalogo:liberar' token %}" class="form-festa">
+    {% csrf_token %}
+    {% if erros_lead %}
+    <div class="erros" role="alert">{% for erro in erros_lead %}<div>{{ erro }}</div>{% endfor %}</div>
+    {% endif %}
+    <div class="campo-oculto" aria-hidden="true">
+        <label for="website{{ sufixo }}">Não preencha este campo</label>
+        <input type="text" name="website" id="website{{ sufixo }}" tabindex="-1" autocomplete="off">
+    </div>
+    <div class="campo">
+        <label for="nome{{ sufixo }}">Seu nome</label>
+        <input type="text" id="nome{{ sufixo }}" name="nome" required maxlength="100" autocomplete="name"
+               placeholder="Como podemos te chamar?" value="{{ dados_lead.nome }}">
+    </div>
+    <div class="campo">
+        <label for="telefone{{ sufixo }}">WhatsApp (com DDD)</label>
+        <input type="tel" id="telefone{{ sufixo }}" name="telefone" required inputmode="tel" autocomplete="tel"
+               placeholder="(83) 99999-0000" maxlength="20" value="{{ dados_lead.telefone }}" data-telefone>
+        <small class="dica">É por ele que enviamos o seu orçamento.</small>
+    </div>
+    <div class="campos-dois">
+        <div class="campo">
+            <label for="data_evento{{ sufixo }}">Data da festa</label>
+            <input type="date" id="data_evento{{ sufixo }}" name="data_evento" required min="{{ hoje }}" value="{{ dados_lead.data_evento }}">
+        </div>
+        <div class="campo">
+            <label for="local{{ sufixo }}">Bairro e cidade</label>
+            <input type="text" id="local{{ sufixo }}" name="local" required maxlength="150" autocomplete="address-level2"
+                   placeholder="Ex.: Centro, Cajazeiras" value="{{ dados_lead.local }}">
+        </div>
+    </div>
+    <button type="submit" class="btn-enviar">{{ texto_botao }}</button>
+    <p class="nota"><svg class="icone"><use href="#i-cadeado"/></svg>
+        Usamos seus dados só para falar sobre o seu orçamento. Nada é cobrado agora.</p>
+</form>

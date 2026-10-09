@@ -64,21 +64,63 @@ def arredondar_total(valor):
     return Decimal(str(valor)).quantize(Decimal('1'), rounding=ROUND_HALF_UP).quantize(Decimal('0.01'))
 
 
-def calcular_total(itens, desconto_geral, valor_adicional):
+TIPOS_DESCONTO_CUPOM = [
+    ('percentual', '% de desconto'),
+    ('valor', 'Valor fixo (R$)'),
+]
+
+
+def desconto_do_cupom(base, tipo, valor):
     """
-    Fórmula única do total do orçamento, usada pelo Orcamento.total e pelo
-    cálculo em lote da lista de orçamentos (para os dois nunca divergirem).
+    Desconto em R$ que o cupom dá sobre `base` (o valor depois dos descontos
+    dos itens e do desconto geral, antes do valor adicional). Nunca passa da base.
+    """
+    zero = Decimal('0')
+    if not tipo or not valor:
+        return zero
+    base = Decimal(str(base))
+    valor = Decimal(str(valor))
+    desconto = base * valor / Decimal('100') if tipo == 'percentual' else valor
+    return max(zero, min(desconto, base))
+
+
+def detalhar_total(itens, desconto_geral, valor_adicional, cupom_tipo='', cupom_valor=0):
+    """
+    Partes do total do orçamento: subtotal (com desconto dos itens), desconto
+    geral, desconto do cupom e o total final (arredondado em reais inteiros).
     itens: iterável de (valor, quantidade, desconto_do_item_em_%).
     """
     zero = Decimal('0')
     cem = Decimal('100')
     subtotal = sum(
-        ((valor or zero) * quantidade) * (cem - (desconto or zero)) / cem
-        for valor, quantidade, desconto in itens
+        (((valor or zero) * quantidade) * (cem - (desconto or zero)) / cem
+         for valor, quantidade, desconto in itens),
+        zero,
     )
-    desconto_geral = desconto_geral or zero
-    total = subtotal - (subtotal * desconto_geral / cem) + (valor_adicional or zero)
-    return arredondar_total(total)
+    valor_desconto_geral = subtotal * (desconto_geral or zero) / cem
+    base = subtotal - valor_desconto_geral
+    valor_cupom = desconto_do_cupom(base, cupom_tipo, cupom_valor)
+    return {
+        'subtotal': subtotal,
+        'desconto_geral': valor_desconto_geral,
+        'desconto_cupom': valor_cupom,
+        'total': arredondar_total(base - valor_cupom + (valor_adicional or zero)),
+    }
+
+
+def calcular_total(itens, desconto_geral, valor_adicional, cupom_tipo='', cupom_valor=0):
+    """
+    Fórmula única do total do orçamento, usada pelo Orcamento.total e pelo
+    cálculo em lote da lista de orçamentos (para os dois nunca divergirem).
+    itens: iterável de (valor, quantidade, desconto_do_item_em_%).
+    """
+    return detalhar_total(itens, desconto_geral, valor_adicional, cupom_tipo, cupom_valor)['total']
+
+
+def normalizar_codigo_cupom(codigo):
+    """'  joao 10 ' -> 'JOAO10' (só letras e números, maiúsculas)."""
+    sem_acento = unicodedata.normalize('NFKD', codigo or '').encode('ascii', 'ignore').decode()
+    return ''.join(c for c in sem_acento.upper() if c.isalnum())[:30]
 
 
 class Cliente(models.Model):
@@ -86,22 +128,22 @@ class Cliente(models.Model):
     nome = models.CharField(max_length=100)
     telefone = models.CharField(max_length=20)
     data_cadastro = models.DateTimeField(auto_now_add=True)
-    
+
     def __str__(self):
         return self.nome
 
     def total_orcamentos(self):
         return self.orcamentos.count()
-    
+
     def orcamentos_confirmados(self):
         return self.orcamentos.filter(status='confirmado').count()
-    
+
     def orcamentos_concluidos(self):
         return self.orcamentos.filter(status='concluido').count()
-    
+
     def orcamentos_pendentes(self):
         return self.orcamentos.filter(status='pendente').count()
-    
+
     def valor_total_orcamentos(self):
         total = 0
         for orcamento in self.orcamentos.all():
@@ -280,6 +322,58 @@ class ChecklistItem(models.Model):
         ordering = ['ordem', 'id']
 
 
+class Cupom(models.Model):
+    """
+    Cupom de indicação: cada funcionário (dono) divulga o seu código; o
+    cliente ganha desconto e o dono ganha uma % do valor do evento, que só
+    conta depois que o evento é concluído.
+    """
+    empresa = models.ForeignKey(Empresa, on_delete=models.CASCADE, related_name='cupons')
+    codigo = models.CharField(max_length=30)
+    dono_nome = models.CharField('Dono do cupom', max_length=100)
+    dono_telefone = models.CharField('WhatsApp do dono', max_length=20, blank=True)
+    tipo_desconto = models.CharField(max_length=12, choices=TIPOS_DESCONTO_CUPOM, default='percentual')
+    valor_desconto = models.DecimalField(max_digits=10, decimal_places=2)  # % ou R$, conforme o tipo
+    comissao_percentual = models.DecimalField('Comissão do dono (%)', max_digits=5, decimal_places=2, default=Decimal('5'))
+    validade_ate = models.DateField('Válido até', null=True, blank=True)
+    limite_usos = models.PositiveIntegerField('Limite de usos', null=True, blank=True)
+    ativo = models.BooleanField(default=True)
+    criado_em = models.DateTimeField(auto_now_add=True)
+
+    @property
+    def descricao_desconto(self):
+        if self.tipo_desconto == 'percentual':
+            return f"{self.valor_desconto.normalize():f}% de desconto"
+        return f"R$ {self.valor_desconto:.2f} de desconto".replace('.', ',')
+
+    def usos(self):
+        """Orçamentos (não cancelados) que usam o cupom."""
+        return self.orcamentos.exclude(status='cancelado').count()
+
+    def motivo_indisponivel(self, ignorar_orcamento=None):
+        """'' se o cupom pode ser usado agora; senão, o motivo (para mostrar ao cliente)."""
+        if not self.ativo:
+            return 'Este cupom não está mais ativo.'
+        if self.validade_ate and timezone.localdate() > self.validade_ate:
+            return 'Este cupom está vencido.'
+        if self.limite_usos:
+            usos = self.orcamentos.exclude(status='cancelado')
+            if ignorar_orcamento is not None:
+                usos = usos.exclude(pk=ignorar_orcamento.pk)
+            if usos.count() >= self.limite_usos:
+                return 'Este cupom já atingiu o limite de usos.'
+        return ''
+
+    def __str__(self):
+        return f"{self.codigo} ({self.dono_nome})"
+
+    class Meta:
+        verbose_name = "Cupom"
+        verbose_name_plural = "Cupons"
+        ordering = ['dono_nome', 'codigo']
+        constraints = [models.UniqueConstraint(fields=['empresa', 'codigo'], name='cupom_codigo_unico_por_empresa')]
+
+
 class Orcamento(models.Model):
     STATUS_CHOICES = [
         ('pendente', 'Pendente'),
@@ -305,10 +399,50 @@ class Orcamento(models.Model):
     endereco = models.TextField(blank=False)
     valor_pago = models.DecimalField(max_digits=10, decimal_places=2, default=0) # valor pago
     custo_operacional = models.DecimalField(max_digits=10, decimal_places=2, default=0) # custo operacional
-    
+    # Cupom de indicação — as regras ficam copiadas aqui no momento em que é aplicado,
+    # para mudanças no cupom não alterarem orçamentos já feitos
+    cupom = models.ForeignKey(Cupom, on_delete=models.SET_NULL, null=True, blank=True, related_name='orcamentos')
+    cupom_codigo = models.CharField(max_length=30, blank=True, default='')
+    cupom_tipo = models.CharField(max_length=12, blank=True, default='')
+    cupom_valor = models.DecimalField(max_digits=10, decimal_places=2, default=0)
+    cupom_comissao = models.DecimalField(max_digits=5, decimal_places=2, default=0)  # % do total para o dono
+    comissao_paga_em = models.DateTimeField(null=True, blank=True)
+
     def __str__(self):
         return f"Orçamento #{self.id} - {self.cliente.nome}"
-    
+
+    def aplicar_cupom(self, cupom):
+        """Copia as regras atuais do cupom para o orçamento (não salva)."""
+        self.cupom = cupom
+        self.cupom_codigo = cupom.codigo
+        self.cupom_tipo = cupom.tipo_desconto
+        self.cupom_valor = cupom.valor_desconto
+        self.cupom_comissao = cupom.comissao_percentual
+
+    def remover_cupom(self):
+        self.cupom = None
+        self.cupom_codigo = self.cupom_tipo = ''
+        self.cupom_valor = self.cupom_comissao = Decimal('0')
+        self.comissao_paga_em = None
+
+    def detalhar_total(self):
+        return detalhar_total(
+            ((item.valor, item.quantidade, item.desconto) for item in self.itens.all()),
+            self.desconto_geral, self.valor_adicional, self.cupom_tipo, self.cupom_valor,
+        )
+
+    @property
+    def desconto_cupom(self):
+        """Desconto em R$ do cupom neste orçamento."""
+        return self.detalhar_total()['desconto_cupom'] if self.cupom_tipo else Decimal('0')
+
+    @property
+    def valor_comissao(self):
+        """Comissão do dono do cupom: % do total do evento."""
+        if not self.cupom_codigo or not self.cupom_comissao:
+            return Decimal('0')
+        return (self.total * self.cupom_comissao / Decimal('100')).quantize(Decimal('0.01'), rounding=ROUND_HALF_UP)
+
     @property
     def total(self):
         """Calcula o total do orçamento, aplicando o desconto de cada item
@@ -326,13 +460,15 @@ class Orcamento(models.Model):
             ((item.valor, item.quantidade, item.desconto) for item in self.itens.all()),
             self.desconto_geral,
             self.valor_adicional,
+            self.cupom_tipo,
+            self.cupom_valor,
         )
-    
+
     @property
     def saldo(self):
         """Calcula o saldo devedor"""
         return self.total - (self.valor_pago or 0)
-    
+
     @property
     def dias_para_evento(self):
         """Retorna quantos dias faltam para o evento"""
@@ -340,7 +476,7 @@ class Orcamento(models.Model):
             hoje = timezone.now().date()
             return (self.data_evento - hoje).days
         return None
-    
+
     def intervalo(self):
         """(início, fim) do evento como datetime, ou None se faltar data/hora."""
         if not self.data_evento or not self.hora_evento:
@@ -451,6 +587,12 @@ class PreOrcamento(models.Model):
     criado_em = models.DateTimeField(auto_now_add=True)
     validade_ate = models.DateTimeField()
     orcamento = models.ForeignKey(Orcamento, on_delete=models.SET_NULL, null=True, blank=True, related_name='+')
+    # Cupom informado pelo cliente no catálogo (regras copiadas no momento do pedido)
+    cupom = models.ForeignKey(Cupom, on_delete=models.SET_NULL, null=True, blank=True, related_name='pre_orcamentos')
+    cupom_codigo = models.CharField(max_length=30, blank=True, default='')
+    cupom_tipo = models.CharField(max_length=12, blank=True, default='')
+    cupom_valor = models.DecimalField(max_digits=10, decimal_places=2, default=0)
+    cupom_comissao = models.DecimalField(max_digits=5, decimal_places=2, default=0)
 
     @property
     def vencido(self):
@@ -459,11 +601,19 @@ class PreOrcamento(models.Model):
     @property
     def total(self):
         """Total com os descontos dos itens (valor no PIX à vista)."""
-        return calcular_total(((i.valor_unitario, i.quantidade, i.desconto) for i in self.itens.all()), 0, 0)
+        return calcular_total(((i.valor_unitario, i.quantidade, i.desconto) for i in self.itens.all()), 0, 0,
+                              self.cupom_tipo, self.cupom_valor)
 
     @property
     def total_sem_desconto(self):
-        return calcular_total(((i.valor_unitario, i.quantidade, 0) for i in self.itens.all()), 0, 0)
+        return calcular_total(((i.valor_unitario, i.quantidade, 0) for i in self.itens.all()), 0, 0,
+                              self.cupom_tipo, self.cupom_valor)
+
+    @property
+    def desconto_cupom(self):
+        """Desconto do cupom em R$ (sobre o valor cheio, sem o desconto do PIX)."""
+        return detalhar_total(((i.valor_unitario, i.quantidade, 0) for i in self.itens.all()), 0, 0,
+                              self.cupom_tipo, self.cupom_valor)['desconto_cupom']
 
     def __str__(self):
         return f"Pré-orçamento #{self.pk} - {self.nome}"
@@ -484,6 +634,51 @@ class PreOrcamentoItem(models.Model):
 
     def __str__(self):
         return f"{self.quantidade}x {self.nome}"
+
+
+class LeadCatalogo(models.Model):
+    """
+    Interessado do catálogo online: para ver os valores, o cliente informa
+    nome, WhatsApp, data e local da festa. Fica registrado mesmo que ele não
+    envie o pedido (com o que chegou a colocar no carrinho), para a equipe
+    poder chamar. Não vira cliente nem entra na agenda — só se fizer o pedido.
+    """
+    STATUS_CHOICES = [
+        ('novo', 'Novo'),
+        ('contatado', 'Contatado'),
+        ('convertido', 'Fez pedido'),
+        ('descartado', 'Descartado'),
+    ]
+    empresa = models.ForeignKey(Empresa, on_delete=models.CASCADE, related_name='leads_catalogo')
+    link = models.ForeignKey(LinkCatalogo, on_delete=models.SET_NULL, null=True, blank=True, related_name='leads')
+    tipo_evento = models.CharField(max_length=100)
+    nome = models.CharField(max_length=100)
+    telefone = models.CharField(max_length=20)
+    data_evento = models.DateField()
+    local = models.CharField(max_length=150)  # bairro / cidade da festa
+    interesse = models.TextField(blank=True, default='')  # carrinho {item_id: quantidade} em JSON
+    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='novo')
+    visitas = models.PositiveIntegerField(default=1)
+    criado_em = models.DateTimeField(auto_now_add=True)
+    atualizado_em = models.DateTimeField(auto_now=True)
+    pre_orcamento = models.ForeignKey(PreOrcamento, on_delete=models.SET_NULL, null=True, blank=True, related_name='+')
+
+    def quantidades_interesse(self):
+        """{item_id: quantidade} do último carrinho visto."""
+        import json
+        try:
+            dados = json.loads(self.interesse or '{}')
+            return {int(k): int(v) for k, v in dados.items()}
+        except (ValueError, TypeError, AttributeError):
+            return {}
+
+    def __str__(self):
+        return f"Interessado {self.nome} ({self.data_evento:%d/%m/%Y})"
+
+    class Meta:
+        verbose_name = "Interessado do catálogo"
+        verbose_name_plural = "Interessados do catálogo"
+        ordering = ['-atualizado_em']
 
 
 class ConflitoVerificado(models.Model):

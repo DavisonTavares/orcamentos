@@ -7,7 +7,7 @@
     <div class="d-flex flex-wrap justify-content-between align-items-center gap-3 mb-3">
         <div>
             <h1 class="h2 mb-1"><i class="fas fa-shopping-cart me-2"></i>Pedidos do Catálogo</h1>
-            <p class="text-muted mb-0">Pré-orçamentos enviados pelos clientes no catálogo online. Confira e gere o orçamento.</p>
+            <p class="text-muted mb-0">Interessados e pré-orçamentos enviados pelos clientes no catálogo online. Confira e gere o orçamento.</p>
         </div>
         <a href="{% url 'orcamentos:links_catalogo' %}" class="btn btn-outline-secondary">
             <i class="fas fa-store me-2"></i>Links do catálogo
@@ -24,6 +24,65 @@
         {% endfor %}
     </ul>
 
+    {% if status == 'interessados' %}
+    <p class="small text-muted"><i class="fas fa-info-circle me-1"></i>Pessoas que informaram os dados da festa no catálogo para ver os valores,
+        mas ainda não enviaram o pedido. Quem envia o pedido sai daqui e aparece em "Novo".</p>
+    {% for lead in leads %}
+    <div class="card shadow-sm border-0 mb-3{% if lead.status == 'contatado' %} opacity-75{% endif %}">
+        <div class="card-body">
+            <div class="d-flex flex-wrap justify-content-between gap-2">
+                <div>
+                    <h5 class="mb-0">{{ lead.nome }}
+                        {% if lead.status == 'contatado' %}<span class="badge bg-secondary align-middle ms-1">Contatado</span>{% endif %}
+                        {% if lead.visitas > 1 %}<span class="badge bg-warning text-dark align-middle ms-1" title="Dias diferentes em que abriu o catálogo">voltou {{ lead.visitas }}x</span>{% endif %}
+                    </h5>
+                    <div class="small text-muted">
+                        <i class="fab fa-whatsapp me-1"></i>{{ lead.telefone }} · {{ lead.tipo_evento }}
+                        · visto pela última vez {{ lead.atualizado_em|date:"d/m H:i" }}
+                    </div>
+                </div>
+                <div class="text-end small">
+                    <div><i class="fas fa-calendar me-1 text-muted"></i>{{ lead.data_evento|date:"d/m/Y (l)" }}</div>
+                    <div><i class="fas fa-map-marker-alt me-1 text-muted"></i>{{ lead.local }}</div>
+                </div>
+            </div>
+            <div class="small mt-2">
+                {% if lead.itens_interesse %}
+                <span class="text-muted">No carrinho:</span>
+                {% for nome, qtd in lead.itens_interesse %}<span class="badge bg-light text-dark border me-1">{{ qtd }}x {{ nome }}</span>{% endfor %}
+                {% else %}
+                <span class="text-muted">Ainda não colocou nada no carrinho.</span>
+                {% endif %}
+            </div>
+            <div class="d-flex flex-wrap gap-2 mt-3">
+                <a class="btn btn-success btn-sm" target="_blank" rel="noopener" href="{{ lead.whatsapp_url }}">
+                    <i class="fab fa-whatsapp me-1"></i>Chamar no WhatsApp
+                </a>
+                <form method="post" action="{% url 'orcamentos:lead_acao' lead.id %}">
+                    {% csrf_token %}
+                    {% if lead.status == 'novo' %}
+                    <input type="hidden" name="acao" value="contatado">
+                    <button type="submit" class="btn btn-outline-primary btn-sm"><i class="fas fa-check me-1"></i>Já contatei</button>
+                    {% else %}
+                    <input type="hidden" name="acao" value="reabrir">
+                    <button type="submit" class="btn btn-outline-secondary btn-sm"><i class="fas fa-undo me-1"></i>Voltar para novo</button>
+                    {% endif %}
+                </form>
+                <form method="post" action="{% url 'orcamentos:lead_acao' lead.id %}" onsubmit="return confirm('Descartar {{ lead.nome|escapejs }}?')">
+                    {% csrf_token %}
+                    <input type="hidden" name="acao" value="descartar">
+                    <button type="submit" class="btn btn-outline-danger btn-sm"><i class="fas fa-times me-1"></i>Descartar</button>
+                </form>
+            </div>
+        </div>
+    </div>
+    {% empty %}
+    <div class="text-center text-muted py-5">
+        <i class="fas fa-user-clock fa-3x mb-3"></i>
+        <p class="mb-0">Nenhum interessado no momento.</p>
+    </div>
+    {% endfor %}
+    {% else %}
     {% for pre in pres %}
     <div class="card shadow-sm border-0 mb-3">
         <div class="card-body">
@@ -81,6 +140,12 @@
                         <span>R$ {{ item.valor_unitario|floatformat:"0g" }}</span>
                     </div>
                     {% endfor %}
+                    {% if pre.cupom_codigo %}
+                    <div class="d-flex justify-content-between small text-success py-1">
+                        <span><i class="fas fa-ticket-alt me-1"></i>Cupom {{ pre.cupom_codigo }}{% if pre.cupom %} ({{ pre.cupom.dono_nome }}){% endif %}</span>
+                        <span>- R$ {{ pre.desconto_cupom|floatformat:"2g" }}</span>
+                    </div>
+                    {% endif %}
                     <div class="d-flex justify-content-between fw-bold mt-1">
                         <span>Total</span><span>R$ {{ pre.total_sem_desconto|floatformat:"0g" }}</span>
                     </div>
@@ -122,5 +187,6 @@
         <p class="mb-0">Nenhum pedido {% if status == 'novo' %}novo{% elif status == 'convertido' %}convertido{% else %}descartado{% endif %}.</p>
     </div>
     {% endfor %}
+    {% endif %}
 </div>
 {% endblock %}

@@ -280,6 +280,11 @@
                         </a>
                     </li>
                     <li class="nav-item">
+                        <a class="nav-link {% if 'cupom' in request.resolver_match.url_name %}active{% endif %}" href="{% url 'orcamentos:cupons' %}">
+                            <i class="fas fa-ticket-alt me-1"></i> Cupons
+                        </a>
+                    </li>
+                    <li class="nav-item">
                         <a class="nav-link {% if 'cliente' in request.resolver_match.url_name %}active{% endif %}" href="{% url 'orcamentos:lista_clientes' %}">
                             <i class="fas fa-users me-1"></i> Clientes
                         </a>

@@ -11,7 +11,7 @@ from reportlab.lib.colors import HexColor
 from django.conf import settings
 from decimal import Decimal
 from pdf2image import convert_from_path
-from .models import arredondar_total
+from .models import arredondar_total, desconto_do_cupom
 from accounts.imagens import caminho_temporario
 import img2pdf
 from PIL import Image, ImageDraw, ImageFont 
@@ -276,11 +276,14 @@ def gerar_pdf(dados: Dict[str, Any], saida_pdf: str, recibo_orcamento=None) -> s
         
     # Totais
     y_position -= 10
-    totais = calcular_totais(itens, dados.get("desconto_geral", 0), dados.get("valor_adicional", 0))
+    totais = calcular_totais(itens, dados.get("desconto_geral", 0), dados.get("valor_adicional", 0),
+                             dados.get("desconto_cupom", 0))
+    # Com cupom, o quadro ganha uma linha e o restante desce junto
+    extra = 10 if totais["desconto_cupom"] > 0 else 0
 
     c.setFillColor(HexColor(COLORS["light"]))
-    c.roundRect(margin_left + content_width * 0.5, y_position - 60, content_width * 0.5, 55, 4 * mm, stroke=0, fill=1)
-    
+    c.roundRect(margin_left + content_width * 0.5, y_position - 60 - extra, content_width * 0.5, 55 + extra, 4 * mm, stroke=0, fill=1)
+
     c.setFillColor(HexColor(COLORS["dark"]))
     c.setFont("Helvetica", 9)
     
@@ -301,12 +304,18 @@ def gerar_pdf(dados: Dict[str, Any], saida_pdf: str, recibo_orcamento=None) -> s
     desconto_geral = round(float(dados.get("desconto_geral", 0)), 0)
     c.drawString(margin_left + content_width * 0.5 + 5 * mm, y_position - 45, f"Desc. geral ({desconto_geral}%):")
     c.drawRightString(margin_left + content_width - 5 * mm, y_position - 45, f"- {brl(totais['desconto_geral_val'])}")
-    
+
+    # Cupom de indicação
+    if extra:
+        c.drawString(margin_left + content_width * 0.5 + 5 * mm, y_position - 55, f"Cupom {dados.get('cupom_codigo', '')}:")
+        c.drawRightString(margin_left + content_width - 5 * mm, y_position - 55, f"- {brl(totais['desconto_cupom'])}")
+    y_position -= extra
+
     # Linha separadora
     c.setStrokeColor(HexColor(COLORS["muted"]))
     c.setLineWidth(0.5)
     c.line(margin_left + content_width * 0.5 + 5 * mm, y_position - 50, margin_left + content_width - 5 * mm, y_position - 50)
-    
+
     # Total
     c.setFont("Helvetica-Bold", 11)
     c.setFillColor(HexColor(COLORS["success"]))
@@ -1382,6 +1391,9 @@ def gerar_confirmacao_agendamento(dados: Dict[str, Any], saida_pdf: str, recibo_
     valorTotal = dados.get('valor_total') + dados.get('valor_adicional', 0)
     c.drawString(margin_left, y_position, f"Valor total: {brl(valorTotal)}")
     y_position -= 10
+    if dados.get("desconto_cupom"):
+        c.drawString(margin_left, y_position, f"Cupom {dados.get('cupom_codigo', '')} aplicado: - {brl(dados['desconto_cupom'])}")
+        y_position -= 10
     c.drawString(margin_left, y_position, f"Valor pago (sinal): {brl(dados.get('valor_pago', 0))}")
     y_position -= 10
 
@@ -1489,12 +1501,13 @@ def load_font(preferred: List[str], size: int):
     negrito = any("bold" in n.lower() or "bd." in n.lower() for n in preferred)
     return fonte(size, "negrito" if negrito else "regular")
 
-def calcular_totais(itens, desconto_geral_percent, valor_adicional=0.0):
+def calcular_totais(itens, desconto_geral_percent, valor_adicional=0.0, desconto_cupom=0.0):
     """
     Totais do orçamento. "total_final" (total + valor adicional) é arredondado
     para reais inteiros, igual ao Orcamento.total; a diferença de centavos do
-    arredondamento é absorvida no desconto geral, para a conta do quadro de
-    totais continuar fechando (ex.: desconto de R$ 61,02 aparece como R$ 61,00).
+    arredondamento é absorvida no desconto geral (ou no do cupom), para a conta
+    do quadro de totais continuar fechando (ex.: desconto de R$ 61,02 aparece
+    como R$ 61,00). desconto_cupom: valor em R$ já calculado (orcamento_para_dict).
     """
     raw_total = 0.0
     descontos_itens = 0.0
@@ -1508,12 +1521,16 @@ def calcular_totais(itens, desconto_geral_percent, valor_adicional=0.0):
         descontos_itens += desconto_item_val
     subtotal = raw_total - descontos_itens
     desconto_geral_val = subtotal * (float(desconto_geral_percent or 0) / 100.0)
-    total = subtotal - desconto_geral_val
+    desconto_cupom = float(desconto_cupom or 0)
+    total = subtotal - desconto_geral_val - desconto_cupom
 
     valor_adicional = float(valor_adicional or 0)
     total_final = float(arredondar_total(total + valor_adicional))
     if desconto_geral_val > 0:
         desconto_geral_val -= total_final - (total + valor_adicional)
+        total = total_final - valor_adicional
+    elif desconto_cupom > 0:
+        desconto_cupom -= total_final - (total + valor_adicional)
         total = total_final - valor_adicional
 
     return {
@@ -1521,6 +1538,7 @@ def calcular_totais(itens, desconto_geral_percent, valor_adicional=0.0):
         "descontos_itens": round(descontos_itens, 2),
         "subtotal": round(subtotal, 2),
         "desconto_geral_val": round(desconto_geral_val, 2),
+        "desconto_cupom": round(desconto_cupom, 2),
         "total": round(total, 2),
         "total_final": total_final,
     }
@@ -2103,11 +2121,17 @@ def gerar_imagem_orcamento(dados: Dict[str, Any], saida_png: str):
     total_geral = sum(float(i.get("valor_unitario", 0)) * float(i.get("quantidade", 1)) for i in itens)
     valor_adicional = float(dados.get('valor_adicional', 0) or 0)
     # Mesmo cálculo do PDF (descontos por item + geral, total arredondado)
-    total_final = calcular_totais(itens, dados.get('desconto_geral', 0), valor_adicional)["total_final"]
+    total_final = calcular_totais(itens, dados.get('desconto_geral', 0), valor_adicional,
+                                  dados.get('desconto_cupom', 0))["total_final"]
     descontos = total_geral + valor_adicional - total_final
+    notas = []
+    if dados.get('desconto_geral', 0):
+        notas.append("* Desconto válido p/ pagamento à vista via PIX")
+    if dados.get('desconto_cupom', 0):
+        notas.append(f"* Inclui o cupom {dados.get('cupom_codigo', '')}: - {brl(dados['desconto_cupom'])}")
     # BOX TOTAL
     y += 30
-    draw.rounded_rectangle([W - 480, y, W - 40, y + 145], 15, fill=COLORS["light"])
+    draw.rounded_rectangle([W - 480, y, W - 40, y + 132 + 24 * len(notas)], 15, fill=COLORS["light"])
 
     draw.text((W - 450, y + 25), "TOTAL:", font=font_total, fill=COLORS["success"])
     draw.text((W - 240, y + 25), f"R$ {total_geral:,.2f}".replace(",", "X").replace(".", ",").replace("X", "."),
@@ -2116,15 +2140,14 @@ def gerar_imagem_orcamento(dados: Dict[str, Any], saida_png: str):
     draw.text((W - 240, y + 55), f"- {brl(descontos)}", font=font_total, fill=COLORS["success"])
     draw.text((W - 450, y + 80), f"Valor adicional: ", font=font_total, fill=COLORS["success"])
     draw.text((W - 240, y + 80), f"+ {brl(valor_adicional)}", font=font_total, fill=COLORS["success"])
-    if dados.get('desconto_geral', 0):
-        draw.text((W - 450, y + 130), "* Desconto válido p/ pagamento à vista via PIX",
-                  font=font_nota, fill=COLORS["muted"])
+    for i, nota in enumerate(notas):
+        draw.text((W - 450, y + 130 + 24 * i), nota, font=font_nota, fill=COLORS["muted"])
 
     draw.text((W - 450, y + 105), f"TOTAL FINAL:", font=font_total, fill=COLORS["success"])
     draw.text((W - 240, y + 105), brl(total_final), font=font_total, fill=COLORS["success"])
 
     # OBSERVAÇÕES
-    y += 175
+    y += 175 + 24 * max(0, len(notas) - 1)
     obs_text = dados.get("observacoes") or "• Tempo padrão de operação: 3 horas com monitor incluso\n• Valores sujeitos a disponibilidade\n• Montagem e desmontagem inclusas"
     obs_lines = wrap_text_pil(obs_text, W - 80, font_table, draw)
     obs_block_h = 40 + len(obs_lines) * 34 + 40
@@ -2341,7 +2364,10 @@ def orcamento_para_dict(orcamento):
         })
     
     desconto_geral = float(orcamento.desconto_geral) if isinstance(orcamento.desconto_geral, Decimal) else float(orcamento.desconto_geral or 0)
-    total = float(total - (total * Decimal(desconto_geral) / Decimal('100.0')))
+    total = total - (total * Decimal(desconto_geral) / Decimal('100.0'))
+    # Cupom de indicação: desconto em R$ sobre o valor já com os outros descontos
+    desconto_cupom = float(desconto_do_cupom(total, orcamento.cupom_tipo, orcamento.cupom_valor))
+    total = float(total) - desconto_cupom
     # Os PDFs somam "valor_total + valor_adicional"; ajusta para essa soma dar
     # o total arredondado em reais inteiros (mesmo valor do Orcamento.total)
     adicional = float(orcamento.valor_adicional or 0)
@@ -2357,6 +2383,8 @@ def orcamento_para_dict(orcamento):
         "valor_total": total,
         "valor_pago": float(orcamento.valor_pago) if isinstance(orcamento.valor_pago, Decimal) else float(orcamento.valor_pago or 0),
         "desconto_geral": desconto_geral,
+        "cupom_codigo": orcamento.cupom_codigo if desconto_cupom else "",
+        "desconto_cupom": desconto_cupom,
         "observacoes": orcamento.observacoes or "",
         "data_criacao": orcamento.data_criacao.strftime("%d/%m/%Y"),
         "evento": evento_data,

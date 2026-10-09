@@ -52,7 +52,7 @@
 
         /* ---------- Categorias (fixas no topo ao rolar) ---------- */
         .categorias { position: sticky; top: 0; z-index: 15; background: rgba(244,246,250,.92); backdrop-filter: saturate(1.4) blur(8px);
-            -webkit-backdrop-filter: saturate(1.4) blur(8px); margin-top: -24px; padding: 10px 0; }
+            -webkit-backdrop-filter: saturate(1.4) blur(8px); margin-top: 6px; padding: 10px 0; }
         .categorias .trilho { display: flex; gap: 8px; overflow-x: auto; padding: 0 16px; scrollbar-width: none; max-width: 1100px; margin: 0 auto; }
         .categorias .trilho::-webkit-scrollbar { display: none; }
         .categorias a { flex-shrink: 0; text-decoration: none; color: var(--texto); background: #fff; border: 1px solid var(--borda);
@@ -190,6 +190,111 @@
         .btn-enviar:disabled { opacity: .55; }
         .campo-oculto { position: absolute; left: -9999px; width: 1px; height: 1px; overflow: hidden; }
 
+        /* ---------- Etapas (1 Sua festa · 2 Brinquedos · 3 Pedido · 4 Confirmação) ---------- */
+        .etapas { list-style: none; display: flex; max-width: 560px; margin: -30px auto 0; padding: 10px 6px; background: #fff;
+            border-radius: 16px; box-shadow: 0 6px 20px rgba(15,23,42,.1); position: relative; z-index: 16; counter-reset: etapa; }
+        .etapas-borda { padding: 0 16px; }
+        .etapas li { flex: 1; text-align: center; font-size: .7rem; font-weight: 600; color: var(--texto-2); position: relative; }
+        .etapas li + li::before { content: ""; position: absolute; top: 13px; right: 50%; width: 100%; height: 2px; background: var(--borda); z-index: -1; }
+        .etapas .num { width: 28px; height: 28px; border-radius: 50%; margin: 0 auto 4px; display: flex; align-items: center; justify-content: center;
+            background: var(--fundo); border: 2px solid var(--borda); font-size: .8rem; }
+        .etapas .num .icone { font-size: .95rem; }
+        .etapas .feita .num { background: var(--verde); border-color: var(--verde); color: #fff; }
+        .etapas li.feita + li::before, .etapas li.atual::before { background: var(--verde); }
+        .etapas .atual { color: var(--texto); }
+        .etapas .atual .num { background: var(--cor); border-color: var(--cor); color: #fff; box-shadow: 0 0 0 4px color-mix(in srgb, var(--cor) 20%, transparent); }
+
+        /* ---------- Etapa 1: dados da festa ---------- */
+        .cartao { background: #fff; border-radius: 20px; padding: 18px 16px; box-shadow: 0 1px 2px rgba(15,23,42,.05), 0 8px 24px rgba(15,23,42,.07);
+            max-width: 560px; margin: 16px auto 22px; scroll-margin-top: 16px; }
+        .etiqueta { display: inline-block; background: var(--cor-suave); color: var(--cor); font-size: .72rem; font-weight: 700;
+            border-radius: 999px; padding: 3px 10px; margin-bottom: 6px; }
+        .cartao h2 { font-size: 1.15rem; margin: 0 0 4px; }
+        .cartao .sub { color: var(--texto-2); font-size: .88rem; margin: 0 0 14px; }
+        .campos-dois { display: grid; grid-template-columns: 1fr; gap: 0 10px; }
+        @media (min-width: 420px) { .campos-dois { grid-template-columns: 1fr 1fr; } }
+        .dica { display: block; font-size: .74rem; color: var(--texto-2); margin-top: 3px; }
+        .form-festa .btn-enviar { margin-top: 4px; }
+        .form-festa .nota { justify-content: center; margin-top: 10px; }
+
+        /* ---------- Como funciona / dúvidas ---------- */
+        .bloco-titulo { font-size: 1.05rem; font-weight: 700; margin: 6px 0 12px; display: flex; align-items: center; gap: 8px; }
+        .bloco-titulo::before { content: ""; width: 5px; height: 18px; border-radius: 3px; background: var(--cor); }
+        .passos { list-style: none; margin: 0 0 26px; padding: 0; display: grid; gap: 10px; }
+        @media (min-width: 760px) { .passos { grid-template-columns: repeat(4, 1fr); } }
+        .passos li { background: #fff; border-radius: var(--raio); padding: 12px 14px; display: flex; gap: 12px; align-items: flex-start;
+            box-shadow: 0 1px 2px rgba(15,23,42,.05); }
+        .passos .num { flex-shrink: 0; width: 30px; height: 30px; border-radius: 10px; background: var(--cor-suave); color: var(--cor);
+            font-weight: 700; display: flex; align-items: center; justify-content: center; }
+        .passos strong { display: block; font-size: .9rem; }
+        .passos span { font-size: .8rem; color: var(--texto-2); }
+        .duvidas { margin: 8px 0 22px; }
+        .duvidas details { background: #fff; border-radius: 14px; margin-bottom: 8px; box-shadow: 0 1px 2px rgba(15,23,42,.05); }
+        .duvidas summary { cursor: pointer; list-style: none; padding: 13px 40px 13px 14px; font-weight: 600; font-size: .9rem; position: relative; }
+        .duvidas summary::-webkit-details-marker { display: none; }
+        .duvidas summary::after { content: "+"; position: absolute; right: 16px; top: 50%; transform: translateY(-50%); font-size: 1.3rem;
+            color: var(--cor); font-weight: 400; }
+        .duvidas details[open] summary::after { content: "−"; }
+        .duvidas details p { margin: 0; padding: 0 14px 14px; color: var(--texto-2); font-size: .86rem; }
+
+        /* ---------- Antes de liberar os valores ---------- */
+        .bloqueado { margin-top: auto; padding-top: 8px; font-size: .74rem; color: var(--texto-2); font-weight: 600;
+            display: flex; align-items: center; gap: 4px; }
+        .btn-liberar { display: flex; align-items: center; justify-content: center; gap: 8px; min-height: 52px; background: var(--cor);
+            color: #fff; border-radius: 999px; font-weight: 700; text-decoration: none; box-shadow: 0 8px 22px rgba(0,0,0,.2); flex: 1; }
+        .fixo-baixo .linha-botoes { display: flex; gap: 8px; }
+        .btn-whatsapp.redondo { width: 52px; flex-shrink: 0; padding: 0; }
+
+        /* ---------- Depois de liberar: resumo da festa e disponibilidade ---------- */
+        .resumo-festa { display: flex; align-items: center; gap: 12px; }
+        .resumo-festa .icone-festa { width: 44px; height: 44px; border-radius: 14px; background: var(--cor-suave); color: var(--cor);
+            display: flex; align-items: center; justify-content: center; font-size: 1.3rem; flex-shrink: 0; }
+        .resumo-festa .texto { flex: 1; min-width: 0; }
+        .resumo-festa strong { display: block; font-size: .98rem; }
+        .resumo-festa span { font-size: .82rem; color: var(--texto-2); display: block; overflow-wrap: anywhere; }
+        .btn-alterar { border: 1.5px solid var(--borda); background: #fff; border-radius: 10px; padding: 7px 10px; font-size: .8rem;
+            font-weight: 600; display: inline-flex; align-items: center; gap: 4px; flex-shrink: 0; }
+        .legenda { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 12px; }
+        .chip { font-size: .74rem; font-weight: 600; border-radius: 999px; padding: 4px 10px; display: inline-flex; align-items: center; gap: 4px; }
+        .chip.livre { background: #DCFCE7; color: #166534; }
+        .chip.reservado { background: #FEF3C7; color: #92400E; }
+        .explica { margin-top: 12px; border-top: 1px solid var(--borda); padding-top: 10px; }
+        .explica summary { cursor: pointer; font-size: .85rem; font-weight: 600; color: var(--cor); display: flex; align-items: center; gap: 6px; }
+        .explica ul { margin: 8px 0 0; padding-left: 18px; font-size: .82rem; color: var(--texto-2); }
+        .explica li { margin-bottom: 4px; }
+        .selo-disp { position: absolute; top: 8px; right: 8px; font-size: .66rem; font-weight: 700; padding: 3px 8px; border-radius: 999px;
+            display: inline-flex; align-items: center; gap: 3px; box-shadow: 0 2px 6px rgba(0,0,0,.12); }
+        .selo-disp.livre { background: #fff; color: #166534; }
+        .selo-disp.reservado { background: #FEF3C7; color: #92400E; }
+        .foto .selo-disp .icone { font-size: .8rem; color: inherit; }
+        .aviso-disp { border-radius: 12px; padding: 9px 11px; font-size: .82rem; margin: 10px 0 0; display: flex; gap: 6px; }
+        .aviso-disp.livre { background: #F0FDF4; color: #166534; }
+        .aviso-disp.reservado { background: #FFFBEB; color: #92400E; }
+
+        /* ---------- Etapa 3 (pedido) ---------- */
+        .festa-pedido { background: var(--fundo); border-radius: 12px; padding: 10px 12px; font-size: .86rem; display: flex;
+            justify-content: space-between; align-items: center; gap: 10px; }
+        .festa-pedido span { display: block; color: var(--texto-2); font-size: .8rem; }
+        .proximos { list-style: none; padding: 0; margin: 6px 0 0; font-size: .82rem; color: var(--texto-2); }
+        .proximos li { display: flex; gap: 8px; padding: 4px 0; }
+        .proximos b { flex-shrink: 0; width: 20px; height: 20px; border-radius: 50%; background: var(--cor-suave); color: var(--cor);
+            font-size: .72rem; display: flex; align-items: center; justify-content: center; }
+
+        /* ---------- Cupom ---------- */
+        .cupom { margin: 10px 0 0; }
+        .cupom-linha { display: flex; gap: 8px; }
+        .cupom-linha input { flex: 1; min-width: 0; font-size: 16px; border: 1.5px dashed var(--borda); border-radius: 12px; padding: 10px 12px;
+            text-transform: uppercase; background: #fff; }
+        .cupom-linha input::placeholder { text-transform: none; }
+        .cupom-linha input:focus { outline: none; border-color: var(--cor); border-style: solid; }
+        .cupom-linha button, .cupom-ok button { border: 1.5px solid var(--cor); color: var(--cor); background: #fff; border-radius: 12px;
+            padding: 0 14px; font-weight: 600; min-height: 44px; }
+        .cupom-ok { display: flex; align-items: center; justify-content: space-between; gap: 8px; background: #F0FDF4; color: #166534;
+            border: 1.5px solid #BBF7D0; border-radius: 12px; padding: 6px 6px 6px 12px; font-size: .86rem; }
+        .cupom-ok button { border-color: #BBF7D0; color: #166534; min-height: 36px; font-size: .8rem; }
+        .cupom-erro { display: block; color: #B91C1C; font-size: .78rem; margin-top: 4px; }
+        .totais .cupom-total { color: var(--verde); font-size: .85rem; font-weight: 600; }
+
         @media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation: none !important; transition: none !important; scroll-behavior: auto !important; } }
     </style>
 </head>
@@ -205,7 +310,11 @@
         <symbol id="i-sacola" viewBox="0 0 24 24"><path d="M7 7V6a5 5 0 0 1 10 0v1h3l-1 15H5L4 7zm2 0h6V6a3 3 0 0 0-6 0zM6.1 9l.8 11h10.2l.8-11z"/></symbol>
         <symbol id="i-pin" viewBox="0 0 24 24"><path d="M12 2a7 7 0 0 0-7 7c0 5.2 7 13 7 13s7-7.8 7-13a7 7 0 0 0-7-7zm0 9.5A2.5 2.5 0 1 1 12 6.5a2.5 2.5 0 0 1 0 5z"/></symbol>
         <symbol id="i-presente" viewBox="0 0 24 24"><path d="M20 7h-2.2A3 3 0 0 0 12 4.4 3 3 0 0 0 6.2 7H4a1 1 0 0 0-1 1v4h1v8a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1v-8h1V8a1 1 0 0 0-1-1zM15 5a1 1 0 1 1 0 2h-2a2 2 0 0 1 2-2zM9 5a2 2 0 0 1 2 2H9a1 1 0 1 1 0-2zM5 9h6v2H5zm1 4h5v6H6zm7 6v-6h5v6zm0-8V9h6v2z"/></symbol>
-        <symbol id="i-insta" viewBox="0 0 24 24"><path d="M7 2h10a5 5 0 0 1 5 5v10a5 5 0 0 1-5 5H7a5 5 0 0 1-5-5V7a5 5 0 0 1 5-5zm0 2a3 3 0 0 0-3 3v10a3 3 0 0 0 3 3h10a3 3 0 0 0 3-3V7a3 3 0 0 0-3-3zm5 3.5a4.5 4.5 0 1 1 0 9 4.5 4.5 0 0 1 0-9zm0 2a2.5 2.5 0 1 0 0 5 2.5 2.5 0 0 0 0-5zM17.5 6a1 1 0 1 1 0 2 1 1 0 0 1 0-2z"/></symbol>
+        <symbol id="i-cadeado" viewBox="0 0 24 24"><path d="M12 2a5 5 0 0 0-5 5v3H6a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-8a2 2 0 0 0-2-2h-1V7a5 5 0 0 0-5-5zm-3 5a3 3 0 0 1 6 0v3H9zm-3 5h12v8H6zm6 2a1.5 1.5 0 0 0-1 2.6V18h2v-1.4a1.5 1.5 0 0 0-1-2.6z"/></symbol>
+        <symbol id="i-calendario" viewBox="0 0 24 24"><path d="M7 2h2v2h6V2h2v2h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2zm-2 8v10h14V10zm0-2h14V6H5zm2 4h4v4H7z"/></symbol>
+        <symbol id="i-editar" viewBox="0 0 24 24"><path d="M3 17.2V21h3.8L17.8 10l-3.8-3.8zM20.7 7a1 1 0 0 0 0-1.4l-2.3-2.3a1 1 0 0 0-1.4 0l-1.8 1.8 3.8 3.8z"/></symbol>
+        <symbol id="i-info" viewBox="0 0 24 24"><path d="M12 2a10 10 0 1 0 0 20 10 10 0 0 0 0-20zm0 2a8 8 0 1 1 0 16 8 8 0 0 1 0-16zm-1 5h2V7h-2zm0 8h2v-6h-2z"/></symbol>
+        <symbol id="i-insta"viewBox="0 0 24 24"><path d="M7 2h10a5 5 0 0 1 5 5v10a5 5 0 0 1-5 5H7a5 5 0 0 1-5-5V7a5 5 0 0 1 5-5zm0 2a3 3 0 0 0-3 3v10a3 3 0 0 0 3 3h10a3 3 0 0 0 3-3V7a3 3 0 0 0-3-3zm5 3.5a4.5 4.5 0 1 1 0 9 4.5 4.5 0 0 1 0-9zm0 2a2.5 2.5 0 1 0 0 5 2.5 2.5 0 0 0 0-5zM17.5 6a1 1 0 1 1 0 2 1 1 0 0 1 0-2z"/></symbol>
         <symbol id="i-whats" viewBox="0 0 24 24"><path d="M12 2a10 10 0 0 0-8.6 15.1L2 22l5-1.3A10 10 0 1 0 12 2zm0 18.2c-1.6 0-3.1-.4-4.4-1.2l-.3-.2-3 .8.8-2.9-.2-.3A8.2 8.2 0 1 1 12 20.2zm4.5-6.1c-.2-.1-1.5-.7-1.7-.8-.2-.1-.4-.1-.6.1l-.8 1c-.1.2-.3.2-.5.1a6.7 6.7 0 0 1-3.3-2.9c-.3-.4.3-.4.8-1.4.1-.2 0-.3 0-.4l-.8-1.8c-.2-.5-.4-.4-.6-.4h-.5c-.2 0-.4.1-.6.3-.2.2-.8.8-.8 2s.8 2.3.9 2.5c.1.2 1.6 2.5 4 3.5 1.5.6 2.1.7 2.8.6.5-.1 1.5-.6 1.7-1.2.2-.6.2-1.1.2-1.2-.1-.1-.2-.2-.4-.3z"/></symbol>
     </svg>
 
@@ -213,13 +322,70 @@
         {% if logo_id %}
         <img src="{% url 'catalogo:logo' token %}?v={{ logo_id }}" alt="{{ empresa.nome }}" width="200" height="76">
         {% endif %}
-        <h1>Diversão para a sua festa 🎉</h1>
-        <p>Escolha os brinquedos, monte o seu pedido e receba o orçamento.</p>
+        <h1>{% if lead %}Olá, {{ lead.nome|truncatewords:1|cut:" …" }}! Vamos montar a sua festa 🎉{% else %}Diversão para a sua festa 🎉{% endif %}</h1>
+        <p>{% if lead %}Escolha os brinquedos e envie o pedido — sem compromisso.{% else %}Monte o seu pedido em poucos passos e receba o orçamento pelo WhatsApp.{% endif %}</p>
         <div class="destaques">
             <span><svg class="icone"><use href="#i-check"/></svg>Montagem e desmontagem inclusas</span>
             {% if empresa.cidade %}<span><svg class="icone"><use href="#i-pin"/></svg>{{ empresa.cidade }} e região</span>{% endif %}
         </div>
     </header>
+
+    <div class="etapas-borda">
+        <ol class="etapas" id="etapas" aria-label="Etapas do pedido">
+            <li class="{% if lead %}feita{% else %}atual{% endif %}" data-etapa="1"{% if not lead %} aria-current="step"{% endif %}>
+                <div class="num">{% if lead %}<svg class="icone"><use href="#i-check"/></svg>{% else %}1{% endif %}</div>Sua festa</li>
+            <li class="{% if lead %}atual{% endif %}" data-etapa="2"{% if lead %} aria-current="step"{% endif %}><div class="num">2</div>Brinquedos</li>
+            <li data-etapa="3"><div class="num">3</div>Pedido</li>
+            <li data-etapa="4"><div class="num">4</div>Confirmação</li>
+        </ol>
+    </div>
+
+    <div class="conteudo">
+        {% if lead %}
+        <section class="cartao" aria-label="Sua festa">
+            <div class="resumo-festa">
+                <div class="icone-festa"><svg class="icone"><use href="#i-calendario"/></svg></div>
+                <div class="texto">
+                    <strong>Festa em {{ lead.data_evento|date:"d/m/Y" }} <small style="font-weight:400;color:var(--texto-2)">({{ lead.data_evento|date:"l" }})</small></strong>
+                    <span>{{ lead.local }}</span>
+                </div>
+                <button type="button" class="btn-alterar" data-editar-festa><svg class="icone"><use href="#i-editar"/></svg>Alterar</button>
+            </div>
+            {% if qtd_livres or qtd_reservados %}
+            <div class="legenda">
+                {% if qtd_livres %}<span class="chip livre"><svg class="icone"><use href="#i-check"/></svg>{{ qtd_livres }} livre{{ qtd_livres|pluralize }} na sua data</span>{% endif %}
+                {% if qtd_reservados %}<span class="chip reservado"><svg class="icone"><use href="#i-relogio"/></svg>{{ qtd_reservados }} já reservado{{ qtd_reservados|pluralize }} nesse dia</span>{% endif %}
+            </div>
+            {% endif %}
+            <details class="explica">
+                <summary><svg class="icone"><use href="#i-info"/></svg>Entenda os valores e a disponibilidade</summary>
+                <ul>
+                    <li>Os valores já são os do seu tipo de festa, com <strong>montagem e desmontagem inclusas</strong>.</li>
+                    {% if tem_pix %}<li>Itens com o selo <strong>PIX</strong> têm desconto no pagamento à vista no PIX.</li>{% endif %}
+                    {% if tem_progressivo %}<li>Itens vendidos por unidade (como balões) ficam <strong>mais baratos quanto mais você leva</strong>.</li>{% endif %}
+                    <li><strong>Livre</strong>: ainda não há reserva desse brinquedo na sua data.</li>
+                    <li><strong>Reservado</strong>: já existe festa com ele nesse dia. Dependendo do horário pode dar certo — pode colocar no pedido que a gente confere.</li>
+                    <li>A data só fica garantida com o sinal de {{ sinal_percentual }}%, depois que nossa equipe confirmar tudo.</li>
+                </ul>
+            </details>
+        </section>
+        {% else %}
+        <section class="cartao" id="festa" aria-labelledby="tituloFesta">
+            <span class="etiqueta">Etapa 1 de 4</span>
+            <h2 id="tituloFesta">Conte sobre a sua festa</h2>
+            <p class="sub">Com a data, mostramos os valores e quais brinquedos estão livres no seu dia. Leva menos de 1 minuto.</p>
+            {% include "orcamentos/_catalogo_form_festa.html" with sufixo="" texto_botao="Ver valores e disponibilidade" %}
+        </section>
+
+        <h2 class="bloco-titulo">Como funciona</h2>
+        <ol class="passos">
+            <li><span class="num">1</span><div><strong>Conte sobre a festa</strong><span>Data e local liberam os valores e a disponibilidade do seu dia.</span></div></li>
+            <li><span class="num">2</span><div><strong>Escolha os brinquedos</strong><span>Monte o pedido vendo o total na hora.</span></div></li>
+            <li><span class="num">3</span><div><strong>Envie o pedido</strong><span>Sem compromisso. Os valores ficam garantidos por {{ validade_dias }} dias.</span></div></li>
+            <li><span class="num">4</span><div><strong>Confirme a reserva</strong><span>Enviamos o orçamento pelo WhatsApp e a data é garantida com sinal de {{ sinal_percentual }}%.</span></div></li>
+        </ol>
+        {% endif %}
+    </div>
 
     {% if secoes %}
     <nav class="categorias" aria-label="Categorias">
@@ -231,12 +397,33 @@
     </nav>
     {% endif %}
 
-    <main class="conteudo">
+    <main class="conteudo" id="brinquedos">
         {% for titulo, itens in secoes %}
         <section class="secao" id="secao-{{ forloop.counter }}">
             <h2>{{ titulo }} <small>· {{ itens|length }}</small></h2>
             <div class="grade">
                 {% for item in itens %}
+                {% if not lead %}
+                {# Antes da etapa 1: só foto e nome — os valores não são enviados ao navegador #}
+                <article class="card">
+                    <a class="abrir" href="#festa" data-ir-festa aria-label="{{ item.nome }} — informe a data da festa para ver o valor">
+                        <span class="foto{% if not item.foto_id and logo_id %} sem-foto{% endif %}">
+                            {% if item.foto_id %}
+                            <img src="{% url 'catalogo:foto' token item.id %}?v={{ item.foto_id }}" alt="{{ item.nome }}" loading="lazy" decoding="async" width="400" height="400">
+                            {% elif logo_id %}
+                            <img src="{% url 'catalogo:logo' token %}?v={{ logo_id }}" alt="" loading="lazy" decoding="async">
+                            {% else %}
+                            <svg class="icone"><use href="#i-presente"/></svg>
+                            {% endif %}
+                        </span>
+                        <span class="info" style="padding-bottom: 11px;">
+                            <span class="nome">{{ item.nome }}</span>
+                            {% if item.descricao %}<span class="descricao">{{ item.descricao }}</span>{% endif %}
+                            <span class="bloqueado"><svg class="icone"><use href="#i-cadeado"/></svg>Valor após informar a data</span>
+                        </span>
+                    </a>
+                </article>
+                {% else %}
                 <article class="card card-item" data-id="{{ item.id }}" data-nome="{{ item.nome }}"
                          data-valor="{{ item.valor|stringformat:'.2f' }}" data-desconto="{{ item.desconto|stringformat:'.2f' }}"{% if item.progressivo %}
                          data-progressivo="{{ item.progressivo }}"{% endif %}>
@@ -250,6 +437,8 @@
                             <svg class="icone"><use href="#i-presente"/></svg>
                             {% endif %}
                             {% if item.valor_pix %}<span class="selo-pix"><svg class="icone"><use href="#i-raio"/></svg>PIX -{{ item.desconto|floatformat:"0" }}%</span>{% endif %}
+                            {% if item.disponibilidade == 'livre' %}<span class="selo-disp livre"><svg class="icone"><use href="#i-check"/></svg>Livre</span>
+                            {% elif item.disponibilidade == 'reservado' %}<span class="selo-disp reservado">Reservado no dia</span>{% endif %}
                         </span>
                         <span class="info">
                             <span class="nome">{{ item.nome }}</span>
@@ -292,9 +481,15 @@
                             <div class="preco">R$ {{ item.valor|floatformat:"0g" }}</div>
                             {% if item.valor_pix %}<div class="pix"><svg class="icone"><use href="#i-raio"/></svg>R$ {{ item.valor_pix|floatformat:"0g" }} no PIX à vista</div>{% endif %}
                             {% endif %}
+                            {% if item.disponibilidade == 'livre' %}
+                            <p class="aviso-disp livre"><svg class="icone"><use href="#i-check"/></svg>Ainda livre em {{ lead.data_evento|date:"d/m" }}.</p>
+                            {% elif item.disponibilidade == 'reservado' %}
+                            <p class="aviso-disp reservado"><svg class="icone"><use href="#i-relogio"/></svg>Já tem festa com ele em {{ lead.data_evento|date:"d/m" }}. Dependendo do horário pode dar certo — coloque no pedido que a gente confere.</p>
+                            {% endif %}
                         </div>
                     </template>
                 </article>
+                {% endif %}
                 {% endfor %}
             </div>
         </section>
@@ -302,12 +497,52 @@
         <p class="vazio">Catálogo em atualização. Fale com a gente pelo WhatsApp! 😊</p>
         {% endfor %}
 
+        <section class="duvidas" aria-labelledby="tituloDuvidas">
+            <h2 class="bloco-titulo" id="tituloDuvidas">Dúvidas frequentes</h2>
+            <details>
+                <summary>Como garanto a data da minha festa?</summary>
+                <p>Depois que você envia o pedido, nossa equipe confere a disponibilidade e manda o orçamento pelo WhatsApp.
+                   A data fica reservada com o pagamento do sinal de {{ sinal_percentual }}% do valor.</p>
+            </details>
+            <details>
+                <summary>Quais formas de pagamento vocês aceitam?</summary>
+                <p>Aceitamos todas as formas de pagamento: PIX, cartão de crédito ou débito, transferência e dinheiro.{% if tem_pix %} No PIX à vista, os itens com o selo PIX têm desconto.{% endif %}</p>
+            </details>
+            <details>
+                <summary>A montagem está inclusa?</summary>
+                <p>Sim. Nossa equipe chega {{ chegada_montagem }} do início da festa para montar tudo e, no final, faz a desmontagem.</p>
+            </details>
+            <details>
+                <summary>Enviar o pedido já me compromete?</summary>
+                <p>Não. O pedido serve para a gente conferir tudo e montar o seu orçamento. Os valores ficam garantidos por {{ validade_dias }} dias
+                   e nada é cobrado até você confirmar.</p>
+            </details>
+            <details>
+                <summary>Como funciona a disponibilidade?</summary>
+                <p>Depois de informar a data, cada brinquedo mostra se ainda está livre ou se já tem festa com ele nesse dia.
+                   A confirmação final é sempre feita pela nossa equipe, considerando o horário da sua festa.</p>
+            </details>
+        </section>
+
         <p class="rodape">
-            Valores para locação, sujeitos à disponibilidade da data.<br>
             {% if empresa.instagram %}<span class="rodape-insta"><svg class="icone"><use href="#i-insta"/></svg>{{ empresa.instagram }}</span>{% endif %}
         </p>
     </main>
 
+    {% if not lead %}
+    <!-- Antes da etapa 1: atalho para o formulário (some quando ele está na tela) -->
+    <div class="fixo-baixo" id="atalhoFesta">
+        <div class="linha-botoes">
+            <a class="btn-liberar" href="#festa" data-ir-festa><svg class="icone"><use href="#i-cadeado"/></svg>Ver valores e disponibilidade</a>
+            {% if whatsapp %}
+            <a class="btn-whatsapp redondo" target="_blank" rel="noopener" aria-label="Falar no WhatsApp"
+               href="https://wa.me/{{ whatsapp }}?text={{ 'Olá! Vi o catálogo e gostaria de fazer um orçamento 😊'|urlencode }}">
+                <svg class="icone"><use href="#i-whats"/></svg>
+            </a>
+            {% endif %}
+        </div>
+    </div>
+    {% else %}
     <!-- Rodapé fixo: WhatsApp (carrinho vazio) ou resumo do carrinho -->
     <div class="fixo-baixo">
         {% if whatsapp %}
@@ -341,21 +576,38 @@
         </div>
     </div>
 
-    <!-- Pedido: itens + dados da festa -->
+    <!-- Etapa 3: revisar o pedido + horário e endereço -->
     <div class="folha-fundo{% if erros %} aberto{% endif %}" id="painelPedido" role="dialog" aria-modal="true" aria-labelledby="tituloPedido">
         <div class="folha">
             <div class="folha-topo">
-                <h3 id="tituloPedido">Seu pedido</h3>
+                <div>
+                    <span class="etiqueta" style="margin-bottom:2px">Etapa 3 de 4</span>
+                    <h3 id="tituloPedido">Revise e envie o pedido</h3>
+                </div>
                 <button type="button" class="btn-fechar" data-fechar aria-label="Fechar"><svg class="icone"><use href="#i-fechar"/></svg></button>
             </div>
             <form method="post" action="{% url 'catalogo:pedido' token %}" id="formPedido" class="folha-corpo" style="padding-bottom: 0;">
                 {% csrf_token %}
                 {% if erros %}
-                <div class="erros">{% for erro in erros %}<div>{{ erro }}</div>{% endfor %}</div>
+                <div class="erros" role="alert">{% for erro in erros %}<div>{{ erro }}</div>{% endfor %}</div>
                 {% endif %}
 
                 <div id="listaPedido"></div>
+                <div class="cupom">
+                    <div class="cupom-linha" id="cupomForm">
+                        <input type="text" id="cupomCodigo" placeholder="Tem um cupom? Digite aqui" maxlength="30" autocomplete="off"
+                               autocapitalize="characters" aria-label="Código do cupom">
+                        <button type="button" id="btnCupom">Aplicar</button>
+                    </div>
+                    <div class="cupom-ok" id="cupomAplicado" hidden>
+                        <span>&#127903;&#65039; <b id="cupomNome"></b> · <span id="cupomDescricao"></span></span>
+                        <button type="button" id="btnRemoverCupom">Remover</button>
+                    </div>
+                    <small class="cupom-erro" id="cupomErro" role="alert"></small>
+                    <input type="hidden" name="cupom" id="cupomCampo" value="">
+                </div>
                 <div class="totais">
+                    <div class="cupom-total" id="painelCupomLinha" hidden><span id="painelCupomNome">Cupom</span><strong id="painelCupom"></strong></div>
                     <div><span>Total</span><strong id="painelTotal"></strong></div>
                     <div class="pix-total" id="painelPixLinha"><span>No PIX à vista</span><strong id="painelPix"></strong></div>
                 </div>
@@ -366,23 +618,18 @@
                     <input type="text" name="website" id="website" tabindex="-1" autocomplete="off">
                 </div>
 
-                <div class="form-titulo">Dados da festa</div>
-                <div class="campo">
-                    <label for="nome">Seu nome</label>
-                    <input type="text" id="nome" name="nome" required maxlength="100" autocomplete="name" value="{{ dados.nome }}">
-                </div>
-                <div class="campo">
-                    <label for="telefone">WhatsApp (com DDD)</label>
-                    <input type="tel" id="telefone" name="telefone" required inputmode="tel" autocomplete="tel"
-                           placeholder="(83) 99999-0000" value="{{ dados.telefone }}">
-                </div>
-                <div class="campos-lado">
-                    <div class="campo inteiro">
-                        <label for="data_evento">Data da festa</label>
-                        <input type="date" id="data_evento" name="data_evento" required min="{{ hoje }}" value="{{ dados.data_evento }}">
+                <div class="form-titulo">Sua festa</div>
+                <div class="festa-pedido">
+                    <div>
+                        <strong>{{ lead.nome }}</strong>
+                        <span>{{ lead.telefone }} · {{ lead.data_evento|date:"d/m/Y" }} · {{ lead.local }}</span>
                     </div>
+                    <button type="button" class="btn-alterar" data-editar-festa><svg class="icone"><use href="#i-editar"/></svg>Alterar</button>
+                </div>
+
+                <div class="campos-dois" style="margin-top:10px">
                     <div class="campo">
-                        <label for="hora_evento">Horário</label>
+                        <label for="hora_evento">Horário de início</label>
                         <input type="time" id="hora_evento" name="hora_evento" required value="{{ dados.hora_evento|default:'16:00' }}">
                     </div>
                     <div class="campo">
@@ -394,26 +641,103 @@
                         </select>
                     </div>
                 </div>
+                <p class="nota" style="margin:-4px 0 10px"><svg class="icone"><use href="#i-info"/></svg>
+                    Nossa equipe chega {{ chegada_montagem }} do horário de início para montar tudo.</p>
                 <div class="campo">
-                    <label for="endereco">Endereço da festa</label>
+                    <label for="endereco">Endereço (rua e número)</label>
                     <textarea id="endereco" name="endereco" rows="2" required maxlength="500" autocomplete="street-address"
-                              placeholder="Rua, número, bairro, cidade">{{ dados.endereco }}</textarea>
+                              placeholder="Ex.: Rua das Flores, 120 — {{ lead.local }}">{{ dados.endereco }}</textarea>
                 </div>
                 <div class="campo">
                     <label for="observacoes">Observações <span style="font-weight:400;color:var(--texto-2)">(opcional)</span></label>
                     <textarea id="observacoes" name="observacoes" rows="2" maxlength="1000"
-                              placeholder="Ex.: tema da festa, quantidade de crianças">{{ dados.observacoes }}</textarea>
+                              placeholder="Ex.: tema da festa, quantidade de crianças, salão ou casa">{{ dados.observacoes }}</textarea>
                 </div>
-                <p class="nota"><svg class="icone"><use href="#i-relogio"/></svg>
-                    Os valores ficam garantidos por {{ validade_dias }} dias. A disponibilidade da data é confirmada pela nossa equipe.</p>
+
+                <div class="form-titulo" style="margin-top:12px">O que acontece depois?</div>
+                <ol class="proximos">
+                    <li><b>1</b>Nossa equipe confere a disponibilidade para o seu horário.</li>
+                    <li><b>2</b>Você recebe o orçamento pelo WhatsApp. Os valores ficam garantidos por {{ validade_dias }} dias.</li>
+                    <li><b>3</b>A data é reservada com o sinal de {{ sinal_percentual }}%. Aceitamos todas as formas de pagamento.</li>
+                </ol>
 
                 <div class="folha-rodape" style="position: sticky; bottom: 0; margin: 12px -16px 0;">
-                    <button type="submit" class="btn-enviar" id="btnEnviarPedido">Enviar pedido</button>
+                    <button type="submit" class="btn-enviar" id="btnEnviarPedido">Enviar pedido sem compromisso</button>
                 </div>
             </form>
         </div>
     </div>
 
+    <!-- Alterar os dados da etapa 1 (a disponibilidade é recalculada para a nova data) -->
+    <div class="folha-fundo{% if erros_lead %} aberto{% endif %}" id="painelFesta" role="dialog" aria-modal="true" aria-labelledby="tituloFestaEditar">
+        <div class="folha">
+            <div class="folha-topo">
+                <h3 id="tituloFestaEditar">Dados da festa</h3>
+                <button type="button" class="btn-fechar" data-fechar aria-label="Fechar"><svg class="icone"><use href="#i-fechar"/></svg></button>
+            </div>
+            <div class="folha-corpo">
+                <p class="nota" style="margin:0 0 10px">Ao trocar a data, a disponibilidade dos brinquedos é atualizada. Seu pedido continua salvo.</p>
+                {% include "orcamentos/_catalogo_form_festa.html" with sufixo="_editar" texto_botao="Salvar e atualizar" %}
+            </div>
+        </div>
+    </div>
+    {% endif %}
+
+    <script>
+    (function () {
+        const $ = (id) => document.getElementById(id);
+
+        // WhatsApp no formato (83) 99999-0000 ao sair do campo
+        document.querySelectorAll('[data-telefone]').forEach(function (campo) {
+            campo.addEventListener('blur', function () {
+                let d = campo.value.replace(/\D/g, '');
+                if (d.length > 11 && d.startsWith('55')) d = d.slice(2);
+                if (d.length === 10 || d.length === 11) {
+                    campo.value = '(' + d.slice(0, 2) + ') ' + d.slice(2, d.length - 4) + '-' + d.slice(-4);
+                }
+            });
+        });
+        document.querySelectorAll('.form-festa').forEach(function (form) {
+            form.addEventListener('submit', function () {
+                const botao = form.querySelector('.btn-enviar');
+                botao.disabled = true;
+                botao.textContent = 'Carregando...';
+            });
+        });
+
+        // Antes da etapa 1: cards e atalho levam ao formulário da festa
+        const festa = $('festa');
+        document.addEventListener('click', function (e) {
+            if (!festa || !e.target.closest('[data-ir-festa]')) return;
+            e.preventDefault();
+            festa.scrollIntoView({ behavior: 'smooth', block: 'start' });
+            setTimeout(function () { const nome = $('nome'); if (nome && !nome.value) nome.focus({ preventScroll: true }); }, 450);
+        });
+        const atalho = $('atalhoFesta');
+        if (atalho && festa && 'IntersectionObserver' in window) {
+            new IntersectionObserver(function (en) { atalho.hidden = en[0].isIntersecting; }).observe(festa);
+        }
+        if (festa && festa.querySelector('.erros')) festa.scrollIntoView();
+
+        // Destaca a categoria visível no menu do topo
+        const links = document.querySelectorAll('[data-categoria]');
+        if ('IntersectionObserver' in window && links.length) {
+            const observador = new IntersectionObserver(function (entradas) {
+                entradas.forEach(function (en) {
+                    if (!en.isIntersecting) return;
+                    links.forEach(function (a) {
+                        const ativa = a.dataset.categoria === en.target.id;
+                        a.classList.toggle('ativa', ativa);
+                        if (ativa) a.scrollIntoView({ inline: 'center', block: 'nearest', behavior: 'smooth' });
+                    });
+                });
+            }, { rootMargin: '-80px 0px -65% 0px' });
+            document.querySelectorAll('.secao').forEach((s) => observador.observe(s));
+        }
+    })();
+    </script>
+
+    {% if lead %}
     <script>
     (function () {
         const CHAVE = 'carrinho_{{ token|escapejs }}';
@@ -447,7 +771,32 @@
         let carrinho = {};
         try { carrinho = JSON.parse(localStorage.getItem(CHAVE) || '{}') || {}; } catch (e) { carrinho = {}; }
         Object.keys(carrinho).forEach(function (id) { if (!itens[id] || !(carrinho[id] > 0)) delete carrinho[id]; });
-        const salvar = () => { try { localStorage.setItem(CHAVE, JSON.stringify(carrinho)); } catch (e) {} };
+        const salvar = () => { try { localStorage.setItem(CHAVE, JSON.stringify(carrinho)); } catch (e) {} enviarInteresse(); };
+
+        // Avisa a equipe do que o cliente está escolhendo (mesmo que ele não envie o pedido)
+        let tempoInteresse;
+        function enviarInteresse() {
+            clearTimeout(tempoInteresse);
+            tempoInteresse = setTimeout(function () {
+                const csrf = document.querySelector('[name=csrfmiddlewaretoken]');
+                fetch('{% url "catalogo:interesse" token %}', {
+                    method: 'POST', keepalive: true, credentials: 'same-origin',
+                    headers: { 'Content-Type': 'application/json', 'X-CSRFToken': csrf ? csrf.value : '' },
+                    body: JSON.stringify({ itens: carrinho }),
+                }).catch(function () {});
+            }, 1500);
+        }
+
+        // Barra de etapas: 2 escolhendo, 3 com o pedido aberto
+        function marcarEtapa(n) {
+            document.querySelectorAll('#etapas li').forEach(function (li) {
+                const k = +li.dataset.etapa;
+                li.classList.toggle('feita', k < n);
+                li.classList.toggle('atual', k === n);
+                if (k === n) li.setAttribute('aria-current', 'step'); else li.removeAttribute('aria-current');
+                li.querySelector('.num').innerHTML = k < n ? svg('i-check') : k;
+            });
+        }
 
         let tempoAviso;
         function avisar(texto) {
@@ -486,16 +835,55 @@
                 '<button type="button" data-mais="' + id + '" aria-label="Aumentar">' + svg('i-mais') + '</button></div>';
         }
 
+        // Cupom de indicação: {codigo, tipo: 'percentual'|'valor', valor, descricao}
+        let cupom = {{ cupom_inicial|default:"null"|safe }};
+        const descontoCupom = (base) => !cupom ? 0 :
+            Math.min(base, cupom.tipo === 'percentual' ? base * cupom.valor / 100 : cupom.valor);
+
         function totais() {
-            // Mesma conta do sistema: soma com o desconto de cada item e arredonda o total
+            // Mesma conta do sistema: soma com o desconto de cada item, tira o cupom e arredonda o total
             let qtd = 0, cheio = 0, pix = 0;
             Object.keys(carrinho).forEach(function (id) {
                 const it = itens[id], q = carrinho[id], v = unitario(id, q);
                 qtd += it.prog ? 1 : q;  // 60 balões contam como 1 item no contador
                 cheio += v * q; pix += v * q * (100 - it.desconto) / 100;
             });
-            return { qtd: qtd, cheio: Math.round(cheio), pix: Math.round(pix) };
+            const cupomCheio = descontoCupom(cheio);
+            return { qtd: qtd, cheio: Math.round(cheio - cupomCheio), pix: Math.round(pix - descontoCupom(pix)), cupom: cupomCheio };
         }
+
+        function desenharCupom() {
+            $('cupomForm').hidden = !!cupom;
+            $('cupomAplicado').hidden = !cupom;
+            $('cupomCampo').value = cupom ? cupom.codigo : '';
+            if (cupom) {
+                $('cupomNome').textContent = cupom.codigo;
+                $('cupomDescricao').textContent = cupom.descricao;
+                $('cupomErro').textContent = '';
+            }
+        }
+        function chamarCupom(parametros) {
+            return fetch('{% url "catalogo:cupom" token %}?' + new URLSearchParams(parametros), { credentials: 'same-origin' })
+                .then((r) => r.json());
+        }
+        function aplicarCupom() {
+            const codigo = $('cupomCodigo').value.trim();
+            if (!codigo) { $('cupomErro').textContent = 'Digite o código do cupom.'; return; }
+            $('btnCupom').disabled = true;
+            chamarCupom({ codigo: codigo }).then(function (r) {
+                if (r.ok) { cupom = r; avisar('Cupom aplicado'); } else { $('cupomErro').textContent = r.erro; }
+            }).catch(function () {
+                $('cupomErro').textContent = 'Não foi possível conferir o cupom agora. Tente de novo.';
+            }).finally(function () { $('btnCupom').disabled = false; desenharCupom(); desenhar(); });
+        }
+        $('btnCupom').addEventListener('click', aplicarCupom);
+        $('cupomCodigo').addEventListener('keydown', function (e) { if (e.key === 'Enter') { e.preventDefault(); aplicarCupom(); } });
+        $('btnRemoverCupom').addEventListener('click', function () {
+            cupom = null;
+            chamarCupom({ remover: '1' }).catch(function () {});
+            $('cupomCodigo').value = '';
+            desenharCupom(); desenhar();
+        });
 
         function desenhar() {
             document.querySelectorAll('[data-controle]').forEach(function (el) { el.innerHTML = controleHTML(el.dataset.controle); });
@@ -525,6 +913,11 @@
                 linha.appendChild(ctl);
                 lista.appendChild(linha);
             });
+            $('painelCupomLinha').hidden = !(cupom && t.cupom > 0);
+            if (cupom) {
+                $('painelCupomNome').textContent = 'Cupom ' + cupom.codigo;
+                $('painelCupom').textContent = '- ' + centavos(t.cupom);
+            }
             $('painelTotal').textContent = reais(t.cheio);
             $('painelPix').textContent = reais(t.pix);
             $('painelPixLinha').hidden = !(t.pix < t.cheio);
@@ -532,17 +925,23 @@
         }
 
         // Folhas (painéis que sobem de baixo)
-        function abrirFolha(id) { $(id).classList.add('aberto'); document.body.classList.add('travado'); }
+        function abrirFolha(id) {
+            $(id).classList.add('aberto');
+            document.body.classList.add('travado');
+            if (id === 'painelPedido') marcarEtapa(3);
+        }
         function fecharFolhas() {
             document.querySelectorAll('.folha-fundo.aberto').forEach((f) => f.classList.remove('aberto'));
             document.body.classList.remove('travado');
             $('detalheControle').removeAttribute('data-controle');
+            marcarEtapa(2);
         }
 
         document.addEventListener('click', function (e) {
             const mais = e.target.closest('[data-mais]');
             const menos = e.target.closest('[data-menos]');
             const abrir = e.target.closest('[data-abrir]');
+            if (e.target.closest('[data-editar-festa]')) { fecharFolhas(); return abrirFolha('painelFesta'); }
             if (mais) return alterar(mais.dataset.mais, 1);
             if (menos) return alterar(menos.dataset.menos, -1);
             if (abrir) {
@@ -560,7 +959,8 @@
             if (campo) alterar(campo.dataset.qtd, 0, parseInt(campo.value, 10) || 0);
         });
         $('btnAbrirPedido').addEventListener('click', () => { fecharFolhas(); abrirFolha('painelPedido'); });
-        if ($('painelPedido').classList.contains('aberto')) document.body.classList.add('travado');
+        if ($('painelPedido').classList.contains('aberto')) { document.body.classList.add('travado'); marcarEtapa(3); }
+        if ($('painelFesta').classList.contains('aberto')) document.body.classList.add('travado');
 
         // No envio, o carrinho vira campos item_<id>=quantidade
         $('formPedido').addEventListener('submit', function (e) {
@@ -576,24 +976,10 @@
             $('btnEnviarPedido').textContent = 'Enviando...';
         });
 
-        // Destaca a categoria visível no menu do topo
-        const links = document.querySelectorAll('[data-categoria]');
-        if ('IntersectionObserver' in window && links.length) {
-            const observador = new IntersectionObserver(function (entradas) {
-                entradas.forEach(function (en) {
-                    if (!en.isIntersecting) return;
-                    links.forEach(function (a) {
-                        const ativa = a.dataset.categoria === en.target.id;
-                        a.classList.toggle('ativa', ativa);
-                        if (ativa) a.scrollIntoView({ inline: 'center', block: 'nearest', behavior: 'smooth' });
-                    });
-                });
-            }, { rootMargin: '-80px 0px -65% 0px' });
-            document.querySelectorAll('.secao').forEach((s) => observador.observe(s));
-        }
-
+        desenharCupom();
         desenhar();
     })();
     </script>
+    {% endif %}
 </body>
 </html>

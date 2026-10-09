@@ -1,0 +1,243 @@
+{% extends "base.html" %}
+
+{% block title %}Cupons - Mundo Kids{% endblock %}
+
+{% block content %}
+<div class="container py-4">
+    <div class="d-flex flex-wrap justify-content-between align-items-center gap-3 mb-3">
+        <div>
+            <h1 class="h2 mb-1"><i class="fas fa-ticket-alt me-2"></i>Cupons de indicação</h1>
+            <p class="text-muted mb-0">Cada funcionário divulga o seu cupom: o cliente ganha desconto e o dono do cupom ganha uma % do evento,
+                que entra para pagamento quando o evento é concluído.</p>
+        </div>
+        <button type="button" class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#modalCupom" data-novo>
+            <i class="fas fa-plus me-1"></i>Novo cupom
+        </button>
+    </div>
+
+    <div class="row g-3 mb-4">
+        <div class="col-sm-6 col-lg-3">
+            <div class="card border-0 shadow-sm h-100"><div class="card-body">
+                <div class="small text-muted">Comissões a pagar</div>
+                <div class="h4 mb-0 text-success">R$ {{ total_a_pagar|floatformat:"2g" }}</div>
+                <div class="small text-muted">eventos já concluídos</div>
+            </div></div>
+        </div>
+        <div class="col-sm-6 col-lg-3">
+            <div class="card border-0 shadow-sm h-100"><div class="card-body">
+                <div class="small text-muted">Previstas</div>
+                <div class="h4 mb-0">R$ {{ total_previsto|floatformat:"2g" }}</div>
+                <div class="small text-muted">eventos confirmados, ainda por acontecer</div>
+            </div></div>
+        </div>
+    </div>
+
+    {% for cupom in cupons %}
+    <div class="card border-0 shadow-sm mb-3{% if not cupom.ativo %} opacity-75{% endif %}">
+        <div class="card-body">
+            <div class="d-flex flex-wrap justify-content-between gap-2">
+                <div>
+                    <h5 class="mb-1">
+                        <span class="badge bg-primary fs-6 font-monospace me-1">{{ cupom.codigo }}</span>
+                        {{ cupom.dono_nome }}
+                        {% if not cupom.ativo %}<span class="badge bg-secondary align-middle">Desativado</span>{% endif %}
+                    </h5>
+                    <div class="small text-muted">
+                        Cliente ganha <strong>{{ cupom.descricao_desconto }}</strong>
+                        · dono ganha <strong>{{ cupom.comissao_percentual|floatformat:"-2" }}%</strong> do evento
+                        {% if cupom.validade_ate %}· válido até {{ cupom.validade_ate|date:"d/m/Y" }}{% endif %}
+                        {% if cupom.limite_usos %}· {{ cupom.resumo.usos }} de {{ cupom.limite_usos }} usos{% else %}· {{ cupom.resumo.usos }} uso{{ cupom.resumo.usos|pluralize }}{% endif %}
+                        {% if cupom.dono_telefone %}· <i class="fab fa-whatsapp"></i> {{ cupom.dono_telefone }}{% endif %}
+                    </div>
+                </div>
+                <div class="d-flex flex-wrap gap-2 align-items-start">
+                    {% if links and cupom.ativo %}
+                    <div class="dropdown">
+                        <button class="btn btn-outline-secondary btn-sm dropdown-toggle" type="button" data-bs-toggle="dropdown">
+                            <i class="fas fa-link me-1"></i>Link para divulgar
+                        </button>
+                        <ul class="dropdown-menu dropdown-menu-end">
+                            {% for link in links %}
+                            <li><button type="button" class="dropdown-item" data-copiar="{{ url_base }}/catalogo/{{ link.token }}/?cupom={{ cupom.codigo }}">
+                                Catálogo {{ link.tipo_evento }}</button></li>
+                            {% endfor %}
+                        </ul>
+                    </div>
+                    {% endif %}
+                    <button type="button" class="btn btn-outline-primary btn-sm" data-bs-toggle="modal" data-bs-target="#modalCupom"
+                            data-editar='{"id": {{ cupom.id }}, "codigo": "{{ cupom.codigo }}", "dono_nome": "{{ cupom.dono_nome|escapejs }}",
+                                          "dono_telefone": "{{ cupom.dono_telefone|escapejs }}", "tipo_desconto": "{{ cupom.tipo_desconto }}",
+                                          "valor_desconto": "{{ cupom.valor_desconto|stringformat:'.2f' }}", "comissao_percentual": "{{ cupom.comissao_percentual|stringformat:'.2f' }}",
+                                          "validade_ate": "{{ cupom.validade_ate|date:'Y-m-d' }}", "limite_usos": "{{ cupom.limite_usos|default_if_none:'' }}"}'>
+                        <i class="fas fa-pen me-1"></i>Editar
+                    </button>
+                    <form method="post" action="{% url 'orcamentos:cupom_acao' cupom.id %}">
+                        {% csrf_token %}
+                        <input type="hidden" name="acao" value="alternar">
+                        <button type="submit" class="btn btn-outline-{% if cupom.ativo %}danger{% else %}success{% endif %} btn-sm">
+                            {% if cupom.ativo %}<i class="fas fa-ban me-1"></i>Desativar{% else %}<i class="fas fa-check me-1"></i>Ativar{% endif %}
+                        </button>
+                    </form>
+                </div>
+            </div>
+
+            <div class="row g-2 mt-2 small text-center">
+                <div class="col-6 col-md-3"><div class="bg-body-tertiary rounded p-2">
+                    <div class="text-muted">Vendido (concluídos)</div><strong>R$ {{ cupom.resumo.vendido|floatformat:"2g" }}</strong></div></div>
+                <div class="col-6 col-md-3"><div class="bg-body-tertiary rounded p-2">
+                    <div class="text-muted">Comissão a pagar</div><strong class="text-success">R$ {{ cupom.resumo.valor_a_pagar|floatformat:"2g" }}</strong></div></div>
+                <div class="col-6 col-md-3"><div class="bg-body-tertiary rounded p-2">
+                    <div class="text-muted">Prevista</div><strong>R$ {{ cupom.resumo.previsto|floatformat:"2g" }}</strong></div></div>
+                <div class="col-6 col-md-3"><div class="bg-body-tertiary rounded p-2">
+                    <div class="text-muted">Já paga</div><strong>R$ {{ cupom.resumo.pago|floatformat:"2g" }}</strong></div></div>
+            </div>
+
+            {% if cupom.resumo.a_pagar %}
+            <form method="post" action="{% url 'orcamentos:cupom_acao' cupom.id %}" class="mt-3"
+                  onsubmit="return confirm('Registrar como paga a comissão dos eventos marcados?')">
+                {% csrf_token %}
+                <input type="hidden" name="acao" value="pagar">
+                <div class="small fw-semibold mb-1">Eventos concluídos com comissão a pagar</div>
+                <div class="table-responsive">
+                    <table class="table table-sm align-middle mb-2">
+                        <thead><tr><th style="width:32px"></th><th>Evento</th><th>Data</th><th class="text-end">Total</th><th class="text-end">Comissão</th></tr></thead>
+                        <tbody>
+                            {% for o in cupom.resumo.a_pagar %}
+                            <tr>
+                                <td><input type="checkbox" class="form-check-input" name="orcamentos" value="{{ o.id }}" checked aria-label="Pagar comissão do #{{ o.id }}"></td>
+                                <td><a href="{% url 'orcamentos:detalhes_orcamento' o.id %}">#{{ o.id }} · {{ o.cliente.nome }}</a></td>
+                                <td>{{ o.data_evento|date:"d/m/Y" }}</td>
+                                <td class="text-end">R$ {{ o.total|floatformat:"2g" }}</td>
+                                <td class="text-end">R$ {{ o.valor_comissao|floatformat:"2g" }} <span class="text-muted">({{ o.cupom_comissao|floatformat:"-2" }}%)</span></td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+                <button type="submit" class="btn btn-success btn-sm"><i class="fas fa-hand-holding-usd me-1"></i>Registrar pagamento a {{ cupom.dono_nome }}</button>
+            </form>
+            {% endif %}
+        </div>
+    </div>
+    {% empty %}
+    <div class="text-center text-muted py-5">
+        <i class="fas fa-ticket-alt fa-3x mb-3"></i>
+        <p class="mb-1">Nenhum cupom ainda.</p>
+        <p class="small">Crie um cupom para cada funcionário e compartilhe o link do catálogo com o código já aplicado.</p>
+    </div>
+    {% endfor %}
+
+    <div class="alert alert-light border small mt-4 mb-0">
+        <i class="fas fa-info-circle me-1"></i><strong>Como funciona:</strong>
+        o cliente informa o cupom no catálogo online (ou abre o link do funcionário, que já vem com o cupom) ou você aplica na tela do orçamento.
+        O desconto é aplicado no total. A comissão é a % do total do evento e entra em "a pagar" quando o evento é concluído —
+        evento cancelado não gera comissão. Mudar um cupom não altera os orçamentos que já o usam.
+    </div>
+</div>
+
+<!-- Criar / editar cupom -->
+<div class="modal fade" id="modalCupom" tabindex="-1" aria-labelledby="tituloModalCupom" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+        <form method="post" action="{% url 'orcamentos:cupom_salvar' %}" class="modal-content">
+            {% csrf_token %}
+            <input type="hidden" name="cupom_id" id="cupom_id">
+            <div class="modal-header">
+                <h5 class="modal-title" id="tituloModalCupom">Novo cupom</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Fechar"></button>
+            </div>
+            <div class="modal-body">
+                <div class="row g-3">
+                    <div class="col-sm-6">
+                        <label class="form-label" for="dono_nome">Dono do cupom</label>
+                        <input type="text" class="form-control" id="dono_nome" name="dono_nome" required maxlength="100" placeholder="Nome do funcionário">
+                    </div>
+                    <div class="col-sm-6">
+                        <label class="form-label" for="dono_telefone">WhatsApp do dono <span class="text-muted small">(opcional)</span></label>
+                        <input type="tel" class="form-control" id="dono_telefone" name="dono_telefone" maxlength="20">
+                    </div>
+                    <div class="col-12">
+                        <label class="form-label" for="codigo">Código</label>
+                        <input type="text" class="form-control font-monospace text-uppercase" id="codigo" name="codigo" required maxlength="30" placeholder="Ex.: JOAO10">
+                        <div class="form-text">Só letras e números. É o que o cliente digita.</div>
+                    </div>
+                    <div class="col-sm-6">
+                        <label class="form-label" for="tipo_desconto">Desconto do cliente</label>
+                        <select class="form-select" id="tipo_desconto" name="tipo_desconto">
+                            {% for valor, nome in tipos_desconto %}<option value="{{ valor }}">{{ nome }}</option>{% endfor %}
+                        </select>
+                    </div>
+                    <div class="col-sm-6">
+                        <label class="form-label" for="valor_desconto">Valor do desconto</label>
+                        <div class="input-group">
+                            <span class="input-group-text" id="unidadeDesconto">%</span>
+                            <input type="number" class="form-control" id="valor_desconto" name="valor_desconto" required min="0.01" step="0.01" value="5">
+                        </div>
+                    </div>
+                    <div class="col-sm-6">
+                        <label class="form-label" for="comissao_percentual">Comissão do dono</label>
+                        <div class="input-group">
+                            <input type="number" class="form-control" id="comissao_percentual" name="comissao_percentual" required min="0" max="100" step="0.01" value="5">
+                            <span class="input-group-text">% do evento</span>
+                        </div>
+                    </div>
+                    <div class="col-sm-6">
+                        <label class="form-label" for="validade_ate">Válido até <span class="text-muted small">(opcional)</span></label>
+                        <input type="date" class="form-control" id="validade_ate" name="validade_ate">
+                    </div>
+                    <div class="col-sm-6">
+                        <label class="form-label" for="limite_usos">Limite de usos <span class="text-muted small">(opcional)</span></label>
+                        <input type="number" class="form-control" id="limite_usos" name="limite_usos" min="1" step="1" placeholder="Sem limite">
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancelar</button>
+                <button type="submit" class="btn btn-primary">Salvar cupom</button>
+            </div>
+        </form>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+(function () {
+    const $ = (id) => document.getElementById(id);
+    const unidade = () => { $('unidadeDesconto').textContent = $('tipo_desconto').value === 'percentual' ? '%' : 'R$'; };
+    $('tipo_desconto').addEventListener('change', unidade);
+
+    // Mesmo modal para criar e editar
+    document.addEventListener('click', function (e) {
+        const editar = e.target.closest('[data-editar]');
+        const novo = e.target.closest('[data-novo]');
+        if (!editar && !novo) return;
+        const dados = editar ? JSON.parse(editar.dataset.editar) : {
+            id: '', codigo: '', dono_nome: '', dono_telefone: '', tipo_desconto: 'percentual',
+            valor_desconto: '5', comissao_percentual: '5', validade_ate: '', limite_usos: '' };
+        $('tituloModalCupom').textContent = editar ? 'Editar cupom ' + dados.codigo : 'Novo cupom';
+        $('cupom_id').value = dados.id;
+        ['codigo', 'dono_nome', 'dono_telefone', 'tipo_desconto', 'valor_desconto', 'comissao_percentual', 'validade_ate', 'limite_usos']
+            .forEach((campo) => { $(campo).value = dados[campo]; });
+        unidade();
+    });
+
+    // Sugere o código a partir do nome do dono (ex.: "João Silva" -> JOAO)
+    $('dono_nome').addEventListener('input', function () {
+        if ($('cupom_id').value || $('codigo').dataset.editado) return;
+        const primeiro = this.value.trim().split(/\s+/)[0] || '';
+        $('codigo').value = primeiro.normalize('NFD').replace(/[^A-Za-z0-9]/g, '').toUpperCase().slice(0, 20);
+    });
+    $('codigo').addEventListener('input', function () { this.dataset.editado = '1'; });
+
+    // Copiar link do catálogo com o cupom
+    document.addEventListener('click', function (e) {
+        const botao = e.target.closest('[data-copiar]');
+        if (!botao) return;
+        const texto = botao.dataset.copiar;
+        const ok = () => { const original = botao.textContent; botao.textContent = 'Link copiado!'; setTimeout(() => { botao.textContent = original; }, 1500); };
+        if (navigator.clipboard && window.isSecureContext) navigator.clipboard.writeText(texto).then(ok, () => prompt('Copie o link:', texto));
+        else prompt('Copie o link:', texto);
+    });
+})();
+</script>
+{% endblock %}

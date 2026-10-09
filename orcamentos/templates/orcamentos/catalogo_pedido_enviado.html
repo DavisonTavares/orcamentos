@@ -24,6 +24,17 @@
         .btn-whatsapp { display: block; background: #25D366; color: #fff; border-radius: 12px; padding: 12px; font-weight: 600;
             text-align: center; text-decoration: none; }
         .btn-whatsapp:hover { color: #fff; background: #1EBE5A; }
+        .etapas { list-style: none; display: flex; padding: 0; margin: 0 0 16px; }
+        .etapas li { flex: 1; text-align: center; font-size: .7rem; font-weight: 600; color: #0F172A; position: relative; }
+        .etapas li + li::before { content: ""; position: absolute; top: 12px; right: 50%; width: 100%; height: 2px; background: #059669; z-index: 0; }
+        .etapas .num { width: 26px; height: 26px; border-radius: 50%; margin: 0 auto 4px; display: flex; align-items: center; justify-content: center;
+            background: #059669; color: #fff; font-size: .75rem; position: relative; z-index: 1; }
+        .etapas .atual .num { background: var(--cor); box-shadow: 0 0 0 4px color-mix(in srgb, var(--cor) 20%, transparent); }
+        .proximos { list-style: none; padding: 0; margin: 0; }
+        .proximos li { display: flex; gap: 10px; padding: 7px 0; font-size: .88rem; }
+        .proximos b { flex-shrink: 0; width: 24px; height: 24px; border-radius: 50%; background: color-mix(in srgb, var(--cor) 12%, #fff);
+            color: var(--cor); font-size: .78rem; display: flex; align-items: center; justify-content: center; }
+        .proximos span { color: #64748B; display: block; font-size: .8rem; }
     </style>
 </head>
 <body>
@@ -32,16 +43,33 @@
     </header>
 
     <main class="cartao">
+        <ol class="etapas" aria-label="Etapas do pedido">
+            <li><div class="num"><i class="fas fa-check"></i></div>Sua festa</li>
+            <li><div class="num"><i class="fas fa-check"></i></div>Brinquedos</li>
+            <li><div class="num"><i class="fas fa-check"></i></div>Pedido</li>
+            <li class="atual" aria-current="step"><div class="num">4</div>Confirmação</li>
+        </ol>
         <div class="ok"><i class="fas fa-check"></i></div>
         <h1 class="h5 text-center fw-bold mb-1">Pedido #{{ pre.id }} recebido!</h1>
         <p class="text-center text-muted small mb-3">
             Obrigado, {{ pre.nome }}! Nossa equipe vai conferir a disponibilidade e falar com você pelo WhatsApp. 💙
         </p>
 
+        <h2 class="h6 fw-bold mt-3">Próximos passos</h2>
+        <ol class="proximos">
+            <li><b>1</b><div>Conferimos a disponibilidade<span>Nossa equipe verifica os brinquedos para o dia e o horário da sua festa.</span></div></li>
+            <li><b>2</b><div>Você recebe o orçamento no WhatsApp<span>No número {{ pre.telefone }}. Os valores ficam garantidos até {{ pre.validade_ate|date:"d/m" }}.</span></div></li>
+            <li><b>3</b><div>Reserva com sinal de {{ sinal_percentual }}%<span>A data fica garantida com o sinal. Aceitamos todas as formas de pagamento.</span></div></li>
+            <li><b>4</b><div>No dia da festa<span>Chegamos {{ chegada_montagem }} do início para montar tudo, e desmontamos no final.</span></div></li>
+        </ol>
+
         <h2 class="h6 fw-bold mt-3">Itens</h2>
         {% for item in itens %}
         <div class="linha"><span>{{ item.quantidade }}x {{ item.nome }}</span><span class="valor">R$ {{ item.valor_unitario|floatformat:"0g" }}</span></div>
         {% endfor %}
+        {% if pre.cupom_codigo %}
+        <div class="linha text-success"><span><i class="fas fa-ticket-alt me-1"></i>Cupom {{ pre.cupom_codigo }}</span><span class="valor">- R$ {{ pre.desconto_cupom|floatformat:"2g" }}</span></div>
+        {% endif %}
         <div class="linha fw-bold"><span>Total</span><span class="valor">R$ {{ pre.total_sem_desconto|floatformat:"0g" }}</span></div>
         {% if pre.total < pre.total_sem_desconto %}
         <div class="linha text-success fw-semibold"><span><i class="fas fa-bolt me-1"></i>No PIX à vista</span><span class="valor">R$ {{ pre.total|floatformat:"0g" }}</span></div>
