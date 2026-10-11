@@ -23,7 +23,7 @@ from .models import (
     Cliente, Item, Orcamento, OrcamentoItem, ChecklistItem, LinkCatalogo, TIPOS_EVENTO, KIT_INFLAVEL,
     PreOrcamento, PreOrcamentoItem, VALIDADE_PRE_ORCAMENTO_DIAS, MARGEM_CONFLITO, tipo_conflito,
     ConflitoVerificado, assinatura_conflito, itens_alem_do_estoque, LeadCatalogo,
-    Cupom, TIPOS_DESCONTO_CUPOM, normalizar_codigo_cupom,
+    Cupom, TIPOS_DESCONTO_CUPOM, normalizar_codigo_cupom, gerar_token_catalogo,
     arredondar_total, calcular_total,
 )
 from accounts.models import Empresa, Usuario
@@ -2661,24 +2661,16 @@ def _decimal_post(valor):
         return None
 
 
-@login_required
-@acesso_empresa_required
-def cupons(request):
+def _resumo_comissoes(orcamentos):
     """
-    Cupons dos funcionários e as comissões: o cliente ganha desconto e o dono
-    do cupom ganha uma % do total do evento, que só conta com o evento concluído.
+    Usos e comissões de um cupom (mesma regra na tela da equipe e no painel do
+    dono): a pagar = concluídos sem pagamento; prevista = confirmados/reagendados;
+    cancelados não contam.
     """
-    empresa = request.user.empresa
-    lista = list(Cupom.objects.filter(empresa=empresa))
-    orcamentos = list(
-        Orcamento.objects.filter(empresa=empresa, cupom__isnull=False).exclude(status='cancelado')
-        .select_related('cliente', 'cupom').prefetch_related('itens').order_by('data_evento')
-    )
-    por_cupom = {c.id: {'usos': 0, 'a_pagar': [], 'valor_a_pagar': Decimal('0'), 'previsto': Decimal('0'),
-                        'pago': Decimal('0'), 'vendido': Decimal('0')} for c in lista}
+    resumo = {'usos': 0, 'a_pagar': [], 'valor_a_pagar': Decimal('0'), 'previsto': Decimal('0'),
+              'pago': Decimal('0'), 'vendido': Decimal('0')}
     for o in orcamentos:
-        resumo = por_cupom.get(o.cupom_id)
-        if resumo is None:
+        if o.status == 'cancelado':
             continue
         resumo['usos'] += 1
         if o.status == 'concluido':
@@ -2690,16 +2682,95 @@ def cupons(request):
                 resumo['valor_a_pagar'] += o.valor_comissao
         elif o.status in ('confirmado', 'reagendar'):
             resumo['previsto'] += o.valor_comissao
+    return resumo
+
+
+def _links_por_tipo(empresa):
+    """Link ativo mais recente de cada tipo de evento, em ordem de tipo."""
+    por_tipo = {}
+    for link in LinkCatalogo.objects.filter(empresa=empresa, ativo=True).order_by('-criado_em', '-id'):
+        por_tipo.setdefault(link.tipo_evento, link)
+    return [por_tipo[tipo] for tipo in sorted(por_tipo)]
+
+
+def _url_base(request):
+    return getattr(settings, 'CATALOGO_URL_BASE', '').rstrip('/') or request.build_absolute_uri('/').rstrip('/')
+
+
+@login_required
+@acesso_empresa_required
+def cupons(request):
+    """
+    Cupons dos funcionários e as comissões: o cliente ganha desconto e o dono
+    do cupom ganha uma % do total do evento, que só conta com o evento concluído.
+    """
+    empresa = request.user.empresa
+    lista = list(Cupom.objects.filter(empresa=empresa))
+    por_cupom = {c.id: [] for c in lista}
+    for o in (Orcamento.objects.filter(empresa=empresa, cupom__isnull=False).exclude(status='cancelado')
+              .select_related('cliente').prefetch_related('itens').order_by('data_evento')):
+        por_cupom.setdefault(o.cupom_id, []).append(o)
+    url_base = _url_base(request)
     for c in lista:
-        c.resumo = por_cupom[c.id]
+        c.resumo = _resumo_comissoes(por_cupom[c.id])
+        c.url_painel = f"{url_base}{reverse('catalogo:painel_cupom', args=[c.token_painel])}"
+        if c.dono_telefone:
+            texto = (f"Olá, {c.dono_nome.split()[0]}! Este é o seu painel do cupom {c.codigo} da {empresa.nome}: "
+                     f"lá você acompanha as festas indicadas e as suas comissões 😊\n{c.url_painel}")
+            c.whatsapp_painel = f"https://wa.me/55{normalizar_telefone(c.dono_telefone)}?text={quote(texto)}"
 
     return render(request, 'orcamentos/cupons.html', {
         'cupons': lista,
         'tipos_desconto': TIPOS_DESCONTO_CUPOM,
-        'links': LinkCatalogo.objects.filter(empresa=empresa, ativo=True).order_by('tipo_evento'),
-        'url_base': getattr(settings, 'CATALOGO_URL_BASE', '').rstrip('/') or request.build_absolute_uri('/').rstrip('/'),
+        'links': _links_por_tipo(empresa),
+        'url_base': url_base,
         'total_a_pagar': sum((c.resumo['valor_a_pagar'] for c in lista), Decimal('0')),
         'total_previsto': sum((c.resumo['previsto'] for c in lista), Decimal('0')),
+    })
+
+
+def painel_cupom(request, token):
+    """
+    Painel do dono do cupom (link privado, sem login): festas indicadas e
+    comissões. Não mostra dados do cliente além do primeiro nome.
+    """
+    cupom = get_object_or_404(Cupom.objects.select_related('empresa'), token_painel=token)
+    empresa = cupom.empresa
+    orcamentos = list(cupom.orcamentos.select_related('cliente').prefetch_related('itens').order_by('-data_evento', '-id'))
+    resumo = _resumo_comissoes(orcamentos)
+    status = dict(Orcamento.STATUS_CHOICES)
+    festas = []
+    for o in orcamentos:
+        if o.status == 'concluido':
+            situacao = ('paga', f"Paga em {timezone.localtime(o.comissao_paga_em):%d/%m/%Y}") if o.comissao_paga_em else ('receber', 'A receber')
+        elif o.status in ('confirmado', 'reagendar'):
+            situacao = ('prevista', 'Prevista — vale após a festa')
+        elif o.status == 'cancelado':
+            situacao = ('cancelada', 'Cancelada — sem comissão')
+        else:
+            situacao = ('aguardando', 'Aguardando o cliente confirmar')
+        festas.append({
+            'cliente': (o.cliente.nome or 'Cliente').split()[0],
+            'data': o.data_evento,
+            'tipo_evento': o.tipo_evento,
+            'status': status.get(o.status, o.status),
+            'comissao': o.valor_comissao if o.status != 'cancelado' else Decimal('0'),
+            'percentual': o.cupom_comissao,
+            'situacao': situacao,
+        })
+    url_base = _url_base(request)
+    links_catalogo = _links_por_tipo(empresa)
+    links = [(l.tipo_evento, f"{url_base}{reverse('catalogo:publico', args=[l.token])}?cupom={cupom.codigo}")
+             for l in links_catalogo]
+    return render(request, 'orcamentos/painel_cupom.html', {
+        'cupom': cupom,
+        'empresa': empresa,
+        'resumo': resumo,
+        'festas': festas,
+        'pedidos_aguardando': cupom.pre_orcamentos.filter(status='novo').count(),
+        'links': links,
+        'link_logo': links_catalogo[0].token if links_catalogo else '',  # a logo é servida pela rota do catálogo
+        'cor': empresa.cor_principal or '#2463EB',
     })
 
 
@@ -2766,7 +2837,12 @@ def cupom_acao(request, cupom_id):
     """Ativar/desativar o cupom ou registrar o pagamento das comissões pendentes."""
     cupom = get_object_or_404(Cupom.objects.filter(empresa=request.user.empresa), id=cupom_id)
     acao = request.POST.get('acao')
-    if acao == 'alternar':
+    if acao == 'novo_link':
+        # Link do painel vazou ou o funcionário saiu: o anterior para de funcionar
+        cupom.token_painel = gerar_token_catalogo()
+        cupom.save(update_fields=['token_painel'])
+        messages.success(request, f'Novo link do painel de {cupom.dono_nome} gerado. O link anterior não funciona mais.')
+    elif acao == 'alternar':
         cupom.ativo = not cupom.ativo
         cupom.save(update_fields=['ativo'])
         messages.success(request, f'Cupom {cupom.codigo} {"ativado" if cupom.ativo else "desativado"}.')

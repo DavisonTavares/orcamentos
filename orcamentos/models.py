@@ -339,6 +339,8 @@ class Cupom(models.Model):
     limite_usos = models.PositiveIntegerField('Limite de usos', null=True, blank=True)
     ativo = models.BooleanField(default=True)
     criado_em = models.DateTimeField(auto_now_add=True)
+    # Código do link privado em que o dono acompanha usos e comissões (sem login)
+    token_painel = models.CharField(max_length=32, unique=True, default=gerar_token_catalogo)
 
     @property
     def descricao_desconto(self):

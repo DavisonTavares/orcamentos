@@ -5,6 +5,8 @@ from . import views
 app_name = 'catalogo'
 
 urlpatterns = [
+    # Painel do dono do cupom (link privado): /catalogo/cupom/<token>/
+    path('cupom/<str:token>/', views.painel_cupom, name='painel_cupom'),
     path('<str:token>/', views.catalogo_publico, name='publico'),
     path('<str:token>/foto/<int:item_id>/', views.catalogo_foto, name='foto'),
     path('<str:token>/logo/', views.catalogo_logo, name='logo'),

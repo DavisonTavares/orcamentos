@@ -64,6 +64,28 @@
                         </ul>
                     </div>
                     {% endif %}
+                    <div class="dropdown">
+                        <button class="btn btn-outline-success btn-sm dropdown-toggle" type="button" data-bs-toggle="dropdown">
+                            <i class="fas fa-chart-line me-1"></i>Painel do dono
+                        </button>
+                        <ul class="dropdown-menu dropdown-menu-end">
+                            {% if cupom.whatsapp_painel %}
+                            <li><a class="dropdown-item" href="{{ cupom.whatsapp_painel }}" target="_blank" rel="noopener">
+                                <i class="fab fa-whatsapp me-2 text-success"></i>Enviar para {{ cupom.dono_nome }}</a></li>
+                            {% endif %}
+                            <li><button type="button" class="dropdown-item" data-copiar="{{ cupom.url_painel }}"><i class="fas fa-copy me-2"></i>Copiar link do painel</button></li>
+                            <li><a class="dropdown-item" href="{{ cupom.url_painel }}" target="_blank" rel="noopener"><i class="fas fa-external-link-alt me-2"></i>Ver como o dono vê</a></li>
+                            <li><hr class="dropdown-divider"></li>
+                            <li>
+                                <form method="post" action="{% url 'orcamentos:cupom_acao' cupom.id %}"
+                                      onsubmit="return confirm('Gerar um novo link? O link atual do painel de {{ cupom.dono_nome|escapejs }} vai parar de funcionar.')">
+                                    {% csrf_token %}
+                                    <input type="hidden" name="acao" value="novo_link">
+                                    <button type="submit" class="dropdown-item text-danger"><i class="fas fa-sync me-2"></i>Gerar novo link</button>
+                                </form>
+                            </li>
+                        </ul>
+                    </div>
                     <button type="button" class="btn btn-outline-primary btn-sm" data-bs-toggle="modal" data-bs-target="#modalCupom"
                             data-editar='{"id": {{ cupom.id }}, "codigo": "{{ cupom.codigo }}", "dono_nome": "{{ cupom.dono_nome|escapejs }}",
                                           "dono_telefone": "{{ cupom.dono_telefone|escapejs }}", "tipo_desconto": "{{ cupom.tipo_desconto }}",
