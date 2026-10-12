@@ -1795,9 +1795,13 @@ def links_catalogo(request):
             'link': link,
             'url': _url_catalogo(request, link) if link else '',
         })
+    # Cupons que podem ir no link (ativos, dentro da validade e do limite de usos)
+    cupons_validos = [c for c in Cupom.objects.filter(empresa=empresa, ativo=True) if not c.motivo_indisponivel()]
     return render(request, 'orcamentos/catalogo_links.html', {
         'linhas': linhas,
         'itens_sem_foto': _itens_catalogo(empresa).filter(foto__isnull=True).count(),
+        'cupons': cupons_validos,
+        'cupom_inicial': normalizar_codigo_cupom(request.GET.get('cupom', '')),
     })
 
 

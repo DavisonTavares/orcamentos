@@ -61,6 +61,9 @@
                             <li><button type="button" class="dropdown-item" data-copiar="{{ url_base }}/catalogo/{{ link.token }}/?cupom={{ cupom.codigo }}">
                                 Catálogo {{ link.tipo_evento }}</button></li>
                             {% endfor %}
+                            <li><hr class="dropdown-divider"></li>
+                            <li><a class="dropdown-item" href="{% url 'orcamentos:links_catalogo' %}?cupom={{ cupom.codigo }}">
+                                <i class="fab fa-whatsapp me-1 text-success"></i>Enviar link com cupom…</a></li>
                         </ul>
                     </div>
                     {% endif %}

@@ -27,15 +27,41 @@
     </div>
     {% endif %}
 
+    <!-- Cupom já aplicado no link -->
+    <div class="card shadow-sm border-0 mb-3">
+        <div class="card-body d-flex flex-wrap align-items-center gap-3">
+            <div class="flex-grow-1" style="min-width: 220px;">
+                <label for="cupomLink" class="form-label fw-semibold mb-1"><i class="fas fa-ticket-alt me-1"></i>Cupom no link</label>
+                {% if cupons %}
+                <select id="cupomLink" class="form-select">
+                    <option value="" data-descricao="">Sem cupom</option>
+                    {% for cupom in cupons %}
+                    <option value="{{ cupom.codigo }}" data-descricao="{{ cupom.descricao_desconto }}"{% if cupom.codigo == cupom_inicial %} selected{% endif %}>
+                        {{ cupom.codigo }} — {{ cupom.dono_nome }} ({{ cupom.descricao_desconto }})
+                    </option>
+                    {% endfor %}
+                </select>
+                {% else %}
+                <div class="small text-muted">Nenhum cupom ativo. <a href="{% url 'orcamentos:cupons' %}">Criar cupom</a></div>
+                {% endif %}
+            </div>
+            <div class="small text-muted" style="max-width: 420px;">
+                Escolhendo um cupom, todos os links abaixo saem com ele <strong>já aplicado</strong>: o cliente vê o desconto
+                no pedido sem precisar digitar, e o dono do cupom recebe a comissão.
+            </div>
+        </div>
+    </div>
+
     <div class="card shadow-sm border-0">
         <div class="list-group list-group-flush">
             {% for linha in linhas %}
-            <div class="list-group-item py-3">
+            <div class="list-group-item py-3" {% if linha.link %}data-url-base="{{ linha.url }}"{% endif %}>
                 <div class="d-flex flex-wrap justify-content-between align-items-center gap-2">
                     <div>
                         <strong>{{ linha.tipo }}</strong>
                         {% if linha.link %}
                         <span class="badge bg-success ms-1">Ativo</span>
+                        <span class="badge bg-primary ms-1 js-selo-cupom" hidden></span>
                         <div class="small text-muted">
                             {{ linha.link.acessos }} acesso{{ linha.link.acessos|pluralize }} ·
                             criado em {{ linha.link.criado_em|date:"d/m/Y" }}
@@ -50,11 +76,11 @@
                         <button type="button" class="btn btn-sm btn-primary btn-copiar" data-url="{{ linha.url }}">
                             <i class="fas fa-copy me-1"></i>Copiar link
                         </button>
-                        <a class="btn btn-sm btn-success" target="_blank" rel="noopener"
+                        <a class="btn btn-sm btn-success js-whats" target="_blank" rel="noopener"
                            href="https://wa.me/?text={{ 'Olá! Segue o nosso catálogo com os brinquedos e valores 😊 '|urlencode }}{{ linha.url|urlencode }}">
                             <i class="fab fa-whatsapp me-1"></i>Enviar
                         </a>
-                        <a class="btn btn-sm btn-outline-secondary" href="{{ linha.url }}" target="_blank" rel="noopener" title="Ver como o cliente vê">
+                        <a class="btn btn-sm btn-outline-secondary js-ver" href="{{ linha.url }}" target="_blank" rel="noopener" title="Ver como o cliente vê">
                             <i class="fas fa-eye"></i>
                         </a>
                         {% endif %}
@@ -83,7 +109,7 @@
                     </div>
                 </div>
                 {% if linha.link %}
-                <div class="small text-muted mt-2 text-break"><code>{{ linha.url }}</code></div>
+                <div class="small text-muted mt-2 text-break"><code class="js-url">{{ linha.url }}</code></div>
                 {% endif %}
             </div>
             {% endfor %}
@@ -98,6 +124,32 @@
 </div>
 
 <script>
+    // Cupom escolhido no topo: todos os links passam a sair com ?cupom=CODIGO
+    const seletorCupom = document.getElementById('cupomLink');
+    function atualizarLinks() {
+        const opcao = seletorCupom ? seletorCupom.selectedOptions[0] : null;
+        const codigo = opcao ? opcao.value : '';
+        const descricao = opcao ? opcao.dataset.descricao : '';
+        document.querySelectorAll('[data-url-base]').forEach(function (linha) {
+            const url = linha.dataset.urlBase + (codigo ? '?cupom=' + encodeURIComponent(codigo) : '');
+            const texto = codigo
+                ? 'Olá! Segue o nosso catálogo com os brinquedos e valores 😊 Com o cupom ' + codigo + ' você ganha ' +
+                  descricao + ' — pelo link ele já vem aplicado: '
+                : 'Olá! Segue o nosso catálogo com os brinquedos e valores 😊 ';
+            linha.querySelector('.btn-copiar').dataset.url = url;
+            linha.querySelector('.js-whats').href = 'https://wa.me/?text=' + encodeURIComponent(texto + url);
+            linha.querySelector('.js-ver').href = url;
+            linha.querySelector('.js-url').textContent = url;
+            const selo = linha.querySelector('.js-selo-cupom');
+            selo.hidden = !codigo;
+            selo.textContent = codigo ? 'Cupom ' + codigo : '';
+        });
+    }
+    if (seletorCupom) {
+        seletorCupom.addEventListener('change', atualizarLinks);
+        atualizarLinks();
+    }
+
     document.querySelectorAll('.btn-copiar').forEach(function (btn) {
         btn.addEventListener('click', function () {
             const original = btn.innerHTML;
