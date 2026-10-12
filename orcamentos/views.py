@@ -18,6 +18,7 @@ import os
 import json
 import unicodedata
 from urllib.parse import quote
+from itertools import groupby
 
 from .models import (
     Cliente, Item, Orcamento, OrcamentoItem, ChecklistItem, LinkCatalogo, TIPOS_EVENTO, KIT_INFLAVEL,
@@ -1311,11 +1312,26 @@ def excluir_item(request, item_id):
     return render(request, "orcamentos/confirmar_exclusao_item.html", {"item": item})
 
 
+# A equipe chega este tempo antes do início da festa para montar
+ANTECEDENCIA_MONTAGEM = timedelta(hours=1)
+
+
+def _preparar_evento_agenda(o, ids_conflito):
+    """Dados prontos para o card da agenda: horário de fim/chegada, brinquedos e contato."""
+    intervalo = o.intervalo()
+    o.fim = intervalo[1] if intervalo else None
+    o.chegada = intervalo[0] - ANTECEDENCIA_MONTAGEM if intervalo else None
+    o.itens_lista = [(oi.quantidade, oi.item.nome or oi.item.descricao) for oi in o.itens.all() if oi.item_id]
+    o.em_conflito = o.id in ids_conflito
+    o.telefone_whats = normalizar_telefone(o.cliente.telefone) or ''
+    o.mapa_url = f"https://www.google.com/maps/search/?api=1&query={quote(o.endereco or '')}"
+
+
 # Views para Agendamentos (filtrados por empresa)
 @login_required
 def agendamentos(request):
     # Data atual
-    hoje = timezone.now().date()
+    hoje = timezone.localdate()  # data no fuso do Brasil (a UTC já vira o dia às 21h)
     
     # Obter filtros
     status_filter = request.GET.get('status', 'todos')
@@ -1344,73 +1360,16 @@ def agendamentos(request):
     mes_anterior = (mes_atual - timedelta(days=1)).replace(day=1)
     mes_proximo = (mes_atual + timedelta(days=32)).replace(day=1)
     
-    # Apenas orçamentos da empresa do usuário. O cliente e os itens já vêm
-    # junto (select/prefetch) porque cada card mostra o cliente e calcula
-    # total/saldo várias vezes — sem isso era uma consulta por card/cálculo.
-    orcamentos = Orcamento.objects.filter(
-        empresa=request.user.empresa,
-        status__in=['confirmado', 'concluido', 'reagendar']  # Excluir pendentes e cancelados
-    ).select_related('cliente').prefetch_related('itens')
-    
-    # Orçamentos pendentes de conclusão (confirmados com data passada)
-    orcamentos_para_concluir = orcamentos.filter(
-        status='confirmado', 
-        data_evento__lt=hoje
-    ).order_by('data_evento', 'hora_evento')
-    
-    # Aplicar filtros de status
-    if status_filter != 'todos':
-        orcamentos = orcamentos.filter(status=status_filter)
-    
-    # Aplicar filtros de data
-    if data_filter:
-        try:
-            data_filtro = datetime.strptime(data_filter, '%Y-%m-%d').date()
-            orcamentos = orcamentos.filter(data_evento=data_filtro)
-        except ValueError:
-            pass
-    elif periodo_filter:
-        if periodo_filter == 'hoje':
-            orcamentos = orcamentos.filter(data_evento=hoje)
-        elif periodo_filter == 'semana':
-            inicio_semana = hoje - timedelta(days=hoje.weekday())
-            fim_semana = inicio_semana + timedelta(days=6)
-            orcamentos = orcamentos.filter(data_evento__range=[inicio_semana, fim_semana])
-        elif periodo_filter == 'mes':
-            inicio_mes = hoje.replace(day=1)
-            fim_mes = (inicio_mes + timedelta(days=32)).replace(day=1) - timedelta(days=1)
-            orcamentos = orcamentos.filter(data_evento__range=[inicio_mes, fim_mes])
-        elif periodo_filter == 'proxima_semana':
-            inicio_proxima = hoje + timedelta(days=(7 - hoje.weekday()))
-            fim_proxima = inicio_proxima + timedelta(days=6)
-            orcamentos = orcamentos.filter(data_evento__range=[inicio_proxima, fim_proxima])
-    
-    # ✅ FILTRO PADRÃO (se nenhum filtro específico)
-    if not data_filter and not periodo_filter:
-        orcamentos = orcamentos.filter(data_evento__gte=hoje)
-    
-    # Separar por categorias
-    agendamentos_hoje = orcamentos.filter(data_evento=hoje).order_by('hora_evento')
-    
-    trinta_dias = hoje + timedelta(days=30)
-    proximos_agendamentos = orcamentos.filter(
-        data_evento__range=[hoje + timedelta(days=1), trinta_dias]
-    ).order_by('data_evento', 'hora_evento')
-    
-    # Concluídos dos últimos 30 dias
-    agendamentos_concluidos = Orcamento.objects.filter(
-        empresa=request.user.empresa,
-        status='concluido',
-        data_evento__gte=hoje - timedelta(days=30)
-    ).select_related('cliente').prefetch_related('itens').order_by('-data_evento')
-    
-    # Gerar calendário para o mês atual
-    # O cabeçalho do calendário começa no domingo (Dom, Seg, Ter...), mas
-    # date.weekday() considera segunda-feira = 0. Sem essa conversão, a
-    # grade começava sempre na segunda-feira anterior e todos os dias
-    # ficavam desalinhados uma coluna à frente do dia da semana correto.
-    dias_ate_domingo_anterior = (mes_atual.weekday() + 1) % 7
-    primeiro_dia_semana = mes_atual - timedelta(days=dias_ate_domingo_anterior)
+    empresa = request.user.empresa
+    status_agenda = ['confirmado', 'concluido', 'reagendar']  # pendentes e cancelados não entram na agenda
+    # Cliente e itens já vêm junto: cada card mostra os brinquedos e calcula total/saldo
+    base = (Orcamento.objects.filter(empresa=empresa, status__in=status_agenda)
+            .select_related('cliente', 'cupom').prefetch_related('itens__item'))
+
+    # Confirmados com data passada que ainda não foram concluídos
+    orcamentos_para_concluir = list(base.filter(status='confirmado', data_evento__lt=hoje).order_by('data_evento', 'hora_evento'))
+
+    orcamentos = base if status_filter == 'todos' else base.filter(status=status_filter)
 
     data_selecionada = None
     if data_filter:
@@ -1419,48 +1378,92 @@ def agendamentos(request):
         except ValueError:
             data_selecionada = None
 
-    # Dias da grade (6 semanas) que têm evento, numa única consulta
-    ultimo_dia_grade = primeiro_dia_semana + timedelta(days=41)
-    dias_com_evento = set(
-        Orcamento.objects.filter(
-            empresa=request.user.empresa,
-            data_evento__range=[primeiro_dia_semana, ultimo_dia_grade],
-            status__in=['confirmado', 'concluido', 'reagendar']  # mesmo critério usado para "agendamentos" nesta tela
-        ).values_list('data_evento', flat=True).distinct()
+    trinta_dias = hoje + timedelta(days=30)
+    agendamentos_hoje, dias_agenda, eventos_do_dia = [], [], None
+    if data_selecionada:
+        # Dia escolhido no calendário: mostra as festas dele, seja qual for a data
+        eventos_do_dia = list(orcamentos.filter(data_evento=data_selecionada).order_by('hora_evento'))
+    else:
+        if periodo_filter == 'hoje':
+            intervalo = (hoje, hoje)
+        elif periodo_filter == 'semana':
+            inicio_semana = hoje - timedelta(days=hoje.weekday())
+            intervalo = (inicio_semana, inicio_semana + timedelta(days=6))
+        elif periodo_filter == 'proxima_semana':
+            inicio_proxima = hoje + timedelta(days=(7 - hoje.weekday()))
+            intervalo = (inicio_proxima, inicio_proxima + timedelta(days=6))
+        elif periodo_filter == 'mes':
+            inicio_mes = hoje.replace(day=1)
+            intervalo = (inicio_mes, (inicio_mes + timedelta(days=32)).replace(day=1) - timedelta(days=1))
+        else:
+            intervalo = (hoje, trinta_dias)
+        no_periodo = list(orcamentos.filter(data_evento__range=intervalo).order_by('data_evento', 'hora_evento'))
+        agendamentos_hoje = [o for o in no_periodo if o.data_evento == hoje]
+        dias_agenda = [(dia, list(eventos)) for dia, eventos in
+                       groupby((o for o in no_periodo if o.data_evento != hoje), key=lambda o: o.data_evento)]
+
+    # Concluídos dos últimos 30 dias
+    agendamentos_concluidos = list(
+        base.filter(status='concluido', data_evento__gte=hoje - timedelta(days=30)).order_by('-data_evento', '-hora_evento')
     )
 
+    # Eventos com conflito de horário (mesma regra da tela de conflitos)
+    pares_conflito = conflitos_da_agenda(empresa, 60)
+    ids_conflito = {p[lado].id for p in pares_conflito for lado in ('a', 'b')}
+    todos = (orcamentos_para_concluir + agendamentos_hoje + (eventos_do_dia or [])
+             + [o for _, eventos in dias_agenda for o in eventos] + agendamentos_concluidos)
+    for o in todos:
+        _preparar_evento_agenda(o, ids_conflito)
+
+    # Números do topo
+    futuros = list(base.filter(status__in=['confirmado', 'reagendar'], data_evento__gte=hoje))
+    a_receber = sum((o.saldo for o in futuros if o.saldo > 0), Decimal('0'))
+
+    # Calendário: começa no domingo (date.weekday() considera segunda = 0)
+    dias_ate_domingo_anterior = (mes_atual.weekday() + 1) % 7
+    primeiro_dia_semana = mes_atual - timedelta(days=dias_ate_domingo_anterior)
+    ultimo_dia_grade = primeiro_dia_semana + timedelta(days=41)
+    eventos_por_dia = dict(
+        Orcamento.objects.filter(empresa=empresa, status__in=status_agenda,
+                                 data_evento__range=[primeiro_dia_semana, ultimo_dia_grade])
+        .values_list('data_evento').annotate(n=Count('id'))
+    )
     dias_calendario = []
     for i in range(42):  # 6 semanas
         dia = primeiro_dia_semana + timedelta(days=i)
-        tem_eventos = dia in dias_com_evento
-
         dias_calendario.append({
             'dia': dia.day,
             'data': dia.strftime('%Y-%m-%d'),
             'hoje': dia == hoje,
-            'eventos': tem_eventos,
+            'eventos': eventos_por_dia.get(dia, 0),
             'mes_atual': dia.month == mes_atual.month,
             'selecionado': data_selecionada is not None and dia == data_selecionada,
         })
-    
+
     context = {
         'orcamentos_para_concluir': orcamentos_para_concluir,
-        'eventos_em_aberto_count': eventos_em_aberto(request.user.empresa).count(),
+        'eventos_em_aberto_count': eventos_em_aberto(empresa).count(),
         'envio_em_andamento': status_envio_eventos(),
-        'conflitos_count': len(conflitos_da_agenda(request.user.empresa, 60)),
+        'conflitos_count': len(pares_conflito),
         # Confirmados de hoje em diante sem nenhum pagamento registrado
-        'sem_sinal_count': Orcamento.objects.filter(empresa=request.user.empresa, status='confirmado', data_evento__gte=hoje)
-                           .filter(Q(valor_pago=0) | Q(valor_pago__isnull=True)).count(),
+        'sem_sinal_count': sum(1 for o in futuros if o.status == 'confirmado' and not o.valor_pago),
         'intervalo_envio_eventos': INTERVALO_ENVIO_EVENTOS,
         'agendamentos_hoje': agendamentos_hoje,
-        'proximos_agendamentos': proximos_agendamentos,
+        'dias_agenda': dias_agenda,
+        'qtd_proximos': sum(len(eventos) for _, eventos in dias_agenda),
+        'eventos_do_dia': eventos_do_dia,
+        'data_selecionada': data_selecionada,
         'agendamentos_concluidos': agendamentos_concluidos,
+        'kpi_hoje': sum(1 for o in futuros if o.data_evento == hoje),
+        'kpi_semana': sum(1 for o in futuros if o.data_evento <= hoje + timedelta(days=6)),
+        'kpi_a_receber': a_receber,
         'hoje': hoje,
+        'amanha': hoje + timedelta(days=1),
         'trinta_dias': trinta_dias,
         'status_filter': status_filter,
         'data_filter': data_filter,
         'periodo_filter': periodo_filter,
-        
+
         # Variáveis para o calendário
         'dias_calendario': dias_calendario,
         'mes_atual': mes_atual,
@@ -1469,7 +1472,7 @@ def agendamentos(request):
         # As cores e o modo escuro da empresa vêm do context processor
         # accounts.context_processors.empresa_theme (não sobrescrever aqui)
     }
-    
+
     return render(request, 'orcamentos/agendamentos.html', context)
 
 @login_required

@@ -1,0 +1,109 @@
+{% comment %}
+Card de um evento na agenda. Fechado: horário, cliente, brinquedos e situação.
+Aberto (clique): contato, local, chegada da equipe, itens, observações, valores e ações.
+Uso: {% include "orcamentos/_agendamento_card.html" with o=evento aberto=True mostrar_data=True %}
+{% endcomment %}
+<details class="ag-card ag-{{ o.status }}{% if o.em_conflito %} ag-conflito{% endif %}"{% if aberto %} open{% endif %}>
+    <summary class="ag-resumo">
+        <div class="ag-hora">
+            {% if mostrar_data %}<span class="ag-data">{{ o.data_evento|date:"d/m" }}</span>{% endif %}
+            <strong>{{ o.hora_evento|time:"H:i" }}</strong>
+            {% if o.fim %}<small>até {{ o.fim|time:"H:i" }}</small>{% endif %}
+        </div>
+        <div class="ag-principal">
+            <div class="ag-cliente">{{ o.cliente.nome }} <span class="ag-tipo">· {{ o.tipo_evento }}</span></div>
+            {% if o.itens_lista %}
+            <div class="ag-itens"><i class="fas fa-shapes me-1"></i>{% for qtd, nome in o.itens_lista %}{% if qtd > 1 %}{{ qtd }}x {% endif %}{{ nome }}{% if not forloop.last %}, {% endif %}{% endfor %}</div>
+            {% endif %}
+            <div class="ag-local"><i class="fas fa-map-marker-alt me-1"></i>{{ o.endereco|truncatechars:70 }}</div>
+        </div>
+        <div class="ag-selos">
+            {% if o.status == 'concluido' %}<span class="badge text-bg-success"><i class="fas fa-check-double me-1"></i>Concluído</span>
+            {% elif o.status == 'reagendar' %}<span class="badge text-bg-warning">Reagendado</span>{% endif %}
+            {% if o.em_conflito %}<span class="badge text-bg-warning" title="Outro evento confirmado no mesmo horário ou com menos de 1h de intervalo"><i class="fas fa-exclamation-triangle me-1"></i>Conflito</span>{% endif %}
+            {% if o.status == 'confirmado' and not o.valor_pago %}
+            <span class="badge text-bg-danger"><i class="fas fa-exclamation-circle me-1"></i>Sem sinal</span>
+            {% elif o.saldo > 0 %}
+            <span class="badge ag-badge-saldo">Saldo R$ {{ o.saldo|floatformat:"0g" }}</span>
+            {% else %}
+            <span class="badge ag-badge-quitado"><i class="fas fa-check me-1"></i>Quitado</span>
+            {% endif %}
+            <i class="fas fa-chevron-down ag-seta" aria-hidden="true"></i>
+        </div>
+    </summary>
+
+    <div class="ag-detalhes">
+        <div class="ag-blocos">
+            <section>
+                <h6><i class="fas fa-user me-1"></i>Cliente</h6>
+                <div class="fw-semibold">{{ o.cliente.nome }}</div>
+                <div class="text-body-secondary small mb-2">{{ o.cliente.telefone|default:"Sem telefone" }}</div>
+                {% if o.telefone_whats %}
+                <div class="d-flex flex-wrap gap-2">
+                    <a class="btn btn-sm btn-success" href="https://wa.me/55{{ o.telefone_whats }}" target="_blank" rel="noopener"><i class="fab fa-whatsapp me-1"></i>WhatsApp</a>
+                    <a class="btn btn-sm btn-outline-secondary" href="tel:+55{{ o.telefone_whats }}"><i class="fas fa-phone me-1"></i>Ligar</a>
+                </div>
+                {% endif %}
+            </section>
+            <section>
+                <h6><i class="fas fa-calendar-day me-1"></i>Festa</h6>
+                <div class="fw-semibold">{{ o.data_evento|date:"l, d/m/Y" }}</div>
+                <div class="small">{{ o.hora_evento|time:"H:i" }}{% if o.fim %} às {{ o.fim|time:"H:i" }}{% endif %} · {{ o.periodo_evento }}h</div>
+                {% if o.chegada %}<div class="small text-primary-emphasis"><i class="fas fa-truck me-1"></i>Equipe chega por volta das {{ o.chegada|time:"H:i" }}</div>{% endif %}
+                <div class="small mt-1">{{ o.endereco }}</div>
+                <a class="small" href="{{ o.mapa_url }}" target="_blank" rel="noopener"><i class="fas fa-map-marked-alt me-1"></i>Abrir no mapa</a>
+            </section>
+            <section>
+                <h6><i class="fas fa-wallet me-1"></i>Valores</h6>
+                <div class="ag-valor"><span>Total</span><strong>R$ {{ o.total|floatformat:"2g" }}</strong></div>
+                <div class="ag-valor"><span>Pago</span><span class="text-success">R$ {{ o.valor_pago|floatformat:"2g" }}</span></div>
+                <div class="ag-valor"><span>Saldo</span><strong class="{% if o.saldo > 0 %}text-danger{% else %}text-success{% endif %}">R$ {{ o.saldo|floatformat:"2g" }}</strong></div>
+                {% if o.cupom_codigo %}<div class="small text-body-secondary mt-1"><i class="fas fa-ticket-alt me-1"></i>Cupom {{ o.cupom_codigo }}{% if o.cupom %} ({{ o.cupom.dono_nome }}){% endif %}</div>{% endif %}
+            </section>
+        </div>
+
+        {% if o.itens_lista %}
+        <div class="ag-lista-itens">
+            <h6><i class="fas fa-shapes me-1"></i>Brinquedos e itens</h6>
+            <ul>{% for qtd, nome in o.itens_lista %}<li><strong>{{ qtd }}x</strong> {{ nome }}</li>{% endfor %}</ul>
+        </div>
+        {% endif %}
+
+        {% if o.observacoes %}
+        <div class="ag-obs"><h6><i class="fas fa-sticky-note me-1"></i>Observações</h6>{{ o.observacoes|linebreaksbr }}</div>
+        {% endif %}
+
+        <div class="ag-acoes">
+            <a href="{% url 'orcamentos:detalhes_orcamento' o.id %}" class="btn btn-sm btn-primary"><i class="fas fa-eye me-1"></i>Orçamento completo</a>
+            <a href="{% url 'orcamentos:editar_orcamento' o.id %}" class="btn btn-sm btn-outline-primary"><i class="fas fa-edit me-1"></i>Editar</a>
+            {% if o.saldo > 0 %}
+            <button type="button" class="btn btn-sm btn-outline-success"
+                    data-bs-toggle="modal" data-bs-target="#modalPagamento"
+                    data-url="{% url 'orcamentos:registrar_pagamento' o.id %}"
+                    data-orcamento="{{ o.id }}" data-cliente="{{ o.cliente.nome }}"
+                    data-total="{{ o.total|stringformat:'.2f' }}" data-pago="{{ o.valor_pago|stringformat:'.2f' }}">
+                <i class="fas fa-hand-holding-usd me-1"></i>Pagamento
+            </button>
+            {% endif %}
+            <a href="{% url 'orcamentos:gerar_checklist_pdf' o.id %}" class="btn btn-sm btn-outline-secondary"><i class="fas fa-clipboard-check me-1"></i>Checklist</a>
+            <a href="{% url 'orcamentos:baixar_pdf' o.id %}" class="btn btn-sm btn-outline-secondary"><i class="fas fa-file-pdf me-1"></i>PDF</a>
+            {% if o.status == 'confirmado' %}
+            <a href="{% url 'orcamentos:concluir_agendamento' o.id %}" class="btn btn-sm btn-success"><i class="fas fa-check-circle me-1"></i>Concluir</a>
+            {% endif %}
+            {% if o.status == 'concluido' %}
+            <form method="post" action="{% url 'orcamentos:reabrir_agendamento' o.id %}" class="d-inline">
+                {% csrf_token %}
+                <button type="submit" class="btn btn-sm btn-outline-secondary" onclick="return confirm('Reabrir este agendamento?')"><i class="fas fa-undo me-1"></i>Reabrir</button>
+            </form>
+            {% endif %}
+            {% if o.status == 'confirmado' or o.status == 'reagendar' %}
+            <form method="post" action="{% url 'orcamentos:alterar_status' o.id %}" class="d-inline ms-auto">
+                {% csrf_token %}
+                <input type="hidden" name="status" value="cancelado">
+                <input type="hidden" name="next" value="agendamentos">
+                <button type="submit" class="btn btn-sm btn-outline-danger" onclick="return confirm('Cancelar este evento?')"><i class="fas fa-ban me-1"></i>Cancelar</button>
+            </form>
+            {% endif %}
+        </div>
+    </div>
+</details>

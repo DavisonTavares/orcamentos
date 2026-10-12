@@ -1,1139 +1,317 @@
 {% extends "base.html" %}
-{% load static %}
 
 {% block title %}Agendamentos - Mundo Kids{% endblock %}
 
 {% block extra_css %}
 <style>
-    :root {
-        --primary: {{ empresa_theme.primary }};
-        --secondary: {{ empresa_theme.secondary }};
-        --accent: {{ empresa_theme.accent }};
-        --light: #F8FAFC;
-        --dark: #1E293B;
-        --success: #10B981;
-    }    
+    /* Cores do tema (claro/escuro) vêm do Bootstrap: --bs-body-bg, --bs-border-color... */
+    .ag-layout { display: grid; grid-template-columns: 290px minmax(0, 1fr); gap: 20px; align-items: start; }
+    @media (max-width: 991.98px) { .ag-layout { grid-template-columns: 1fr; } }
 
-    /* Layout Moderno */
-    .agendamento-grid {
-        display: grid;
-        grid-template-columns: 300px 1fr;
-        gap: 24px;
-        align-items: start;
-    }
+    .ag-painel { background: var(--bs-body-bg); border: 1px solid var(--bs-border-color); border-radius: 16px; padding: 16px;
+        box-shadow: 0 2px 10px rgba(0,0,0,.04); }
 
-    /* Sidebar de Calendário */
-    .calendar-sidebar {
-        background: white;
-        border-radius: 16px;
-        padding: 20px;
-        box-shadow: 0 4px 20px rgba(0, 0, 0, 0.08);
-        position: sticky;
-        top: 20px;
-        height: fit-content;
-    }
+    /* Números do topo */
+    .ag-kpis { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; margin-bottom: 20px; }
+    @media (max-width: 767.98px) { .ag-kpis { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+    .ag-kpi { background: var(--bs-body-bg); border: 1px solid var(--bs-border-color); border-radius: 14px; padding: 12px 14px;
+        text-decoration: none; color: inherit; display: block; }
+    a.ag-kpi:hover { border-color: var(--bs-primary); }
+    .ag-kpi small { color: var(--bs-secondary-color); display: block; font-size: .78rem; }
+    .ag-kpi strong { font-size: 1.45rem; line-height: 1.2; }
+    .ag-kpi.alerta strong { color: var(--bs-danger); }
 
-    .calendar-header {
-        text-align: center;
-        margin-bottom: 20px;
-    }
-
-    .calendar-nav {
-        display: flex;
-        justify-content: space-between;
-        align-items: center;
-        margin-bottom: 15px;
-    }
-
-    .calendar-grid {
-        display: grid;
-        grid-template-columns: repeat(7, 1fr);
-        gap: 4px;
-        margin-bottom: 15px;
-    }
-
-    .calendar-weekday {
-        text-align: center;
-        font-size: 0.75rem;
-        font-weight: 600;
-        color: #64748b;
-        padding: 5px;
-    }
-
-    .calendar-day {
-        text-align: center;
-        padding: 8px;
-        border-radius: 8px;
-        cursor: pointer;
-        transition: all 0.2s;
-        font-size: 0.9rem;
-        position: relative;
-    }
-
-    .calendar-day:hover {
-        background: #f1f5f9;
-    }
-
-    .calendar-day.current {
-        background: var(--primary);
-        color: white;
-        font-weight: 600;
-    }
-
-    .calendar-day.has-events::after {
-        content: '';
-        position: absolute;
-        bottom: 3px;
-        left: 50%;
-        transform: translateX(-50%);
-        width: 4px;
-        height: 4px;
-        background: var(--success);
-        border-radius: 50%;
-    }
-
-    .calendar-day.selected {
-        background: var(--secondary);
-        color: white;
-    }
-
-    /* Cards Modernizados */
-    .agendamento-card {
-        background: white;
-        border-radius: 16px;
-        padding: 20px;
-        margin-bottom: 16px;
-        box-shadow: 0 2px 12px rgba(0, 0, 0, 0.06);
-        border: 1px solid #e2e8f0;
-        transition: all 0.3s ease;
-        position: relative;
-        overflow: hidden;
-    }
-
-    .agendamento-card::before {
-        content: '';
-        position: absolute;
-        left: 0;
-        top: 0;
-        bottom: 0;
-        width: 4px;
-        background: var(--primary);
-    }
-
-    .agendamento-card.hoje::before {
-        background: var(--success);
-    }
-
-    .agendamento-card.concluido::before {
-        background: var(--success);
-    }
-
-    .agendamento-card.urgente::before {
-        background: #ef4444;
-        animation: pulse 2s infinite;
-    }
-
-    @keyframes pulse {
-        0% { opacity: 1; }
-        50% { opacity: 0.5; }
-        100% { opacity: 1; }
-    }
-
-    .agendamento-card:hover {
-        transform: translateY(-2px);
-        box-shadow: 0 8px 25px rgba(0, 0, 0, 0.1);
-    }
-
-    .agendamento-header {
-        display: flex;
-        justify-content: space-between;
-        align-items: flex-start;
-        margin-bottom: 16px;
-        gap: 12px;
-    }
-
-    .agendamento-time {
-        background: linear-gradient(135deg, var(--primary), var(--secondary));
-        color: white;
-        padding: 8px 12px;
-        border-radius: 12px;
-        font-weight: 600;
-        font-size: 0.9rem;
-    }
-
-    .agendamento-status {
-        padding: 6px 12px;
-        border-radius: 20px;
-        font-size: 0.75rem;
-        font-weight: 600;
-    }
-
-    .status-confirmado {
-        background: #e0f2fe;
-        color: #0c4a6e;
-    }
-
-    .status-concluido {
-        background: #fce7f3;
-        color: #831843;
-    }
-
-    .status-pendente {
-        background: #fef3c7;
-        color: #92400e;
-    }
-
-    .agendamento-content {
-        display: grid;
-        gap: 16px;
-    }
-
-    .agendamento-cliente {
-        display: flex;
-        align-items: center;
-        gap: 10px;
-        font-weight: 600;
-        color: var(--dark);
-    }
-
-    .cliente-avatar {
-        width: 40px;
-        height: 40px;
-        border-radius: 50%;
-        background: linear-gradient(135deg, var(--primary), var(--secondary));
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        color: white;
-        font-weight: 600;
-        font-size: 1.1rem;
-    }
-
-    .agendamento-details {
-        display: grid;
-        grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-        gap: 12px;
-        padding: 16px;
-        background: #f8fafc;
-        border-radius: 12px;
-    }
-
-    .detail-item {
-        display: flex;
-        flex-direction: column;
-        gap: 4px;
-    }
-
-    .detail-label {
-        font-size: 0.75rem;
-        color: #64748b;
-        font-weight: 500;
-    }
-
-    .detail-value {
-        font-weight: 600;
-        color: var(--dark);
-        font-size: 0.9rem;
-    }
-
-    .agendamento-financeiro {
-        display: grid;
-        grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
-        gap: 12px;
-        padding: 16px;
-        background: #f0fdf4;
-        border-radius: 12px;
-        border: 1px solid #bbf7d0;
-    }
-
-    .financeiro-item {
-        text-align: center;
-        padding: 8px;
-    }
-
-    .financeiro-label {
-        font-size: 0.75rem;
-        color: #15803d;
-        margin-bottom: 4px;
-    }
-
-    .financeiro-value {
-        font-weight: 700;
-        color: #15803d;
-        font-size: 1.1rem;
-    }
-
-    .financeiro-value.saldo-negativo {
-        color: #dc2626;
-    }
-
-    .agendamento-actions {
-        display: flex;
-        gap: 8px;
-        justify-content: flex-end;
-        flex-wrap: wrap;
-        padding-top: 16px;
-        border-top: 1px solid #e2e8f0;
-    }
-
-    .btn-action {
-        padding: 8px 16px;
-        border-radius: 10px;
-        font-size: 0.85rem;
-        font-weight: 500;
-        display: flex;
-        align-items: center;
-        gap: 6px;
-        transition: all 0.2s;
-    }
-
-    .btn-action:hover {
-        transform: translateY(-1px);
-    }
-
-    /* Filtros Modernos */
-    .filtros-modernos {
-        background: white;
-        padding: 24px;
-        border-radius: 16px;
-        margin-bottom: 24px;
-        box-shadow: 0 4px 20px rgba(0, 0, 0, 0.08);
-    }
-
-    .filtros-header {
-        display: flex;
-        justify-content: space-between;
-        align-items: center;
-        margin-bottom: 20px;
-    }
-
-    .filtros-grid {
-        display: grid;
-        grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-        gap: 16px;
-    }
-
-    .filter-group {
-        display: flex;
-        flex-direction: column;
-        gap: 8px;
-    }
-
-    .filter-label {
-        font-size: 0.85rem;
-        font-weight: 600;
-        color: var(--dark);
-    }
+    /* Calendário */
+    .ag-calendario { position: sticky; top: 16px; }
+    @media (max-width: 991.98px) { .ag-calendario { position: static; } }
+    .cal-nav { display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; }
+    .cal-nav strong { text-transform: capitalize; }
+    .cal-grade { display: grid; grid-template-columns: repeat(7, 1fr); gap: 3px; }
+    .cal-semana { text-align: center; font-size: .7rem; font-weight: 600; color: var(--bs-secondary-color); padding: 4px 0; }
+    .cal-dia { position: relative; text-align: center; padding: 6px 0 17px; border-radius: 9px; font-size: .88rem; text-decoration: none;
+        color: inherit; line-height: 1; }
+    a.cal-dia:hover { background: var(--bs-tertiary-bg); }
+    .cal-dia.fora { color: var(--bs-secondary-color); opacity: .45; }
+    .cal-dia.hoje { box-shadow: inset 0 0 0 2px var(--bs-primary); font-weight: 700; }
+    .cal-dia.selecionado { background: var(--bs-primary); color: #fff; }
+    .cal-dia .qtd { position: absolute; left: 50%; bottom: 2px; transform: translateX(-50%); font-size: .58rem; font-weight: 700;
+        min-width: 15px; padding: 0 3px; border-radius: 999px; background: var(--bs-success); color: #fff; line-height: 1.35; }
+    .cal-dia.selecionado .qtd { background: #fff; color: var(--bs-primary); }
+    .ag-periodos { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 14px; }
+    .ag-periodos a { font-size: .78rem; }
 
     /* Seções */
-    .section-moderna {
-        background: white;
-        border-radius: 16px;
-        padding: 24px;
-        margin-bottom: 24px;
-        box-shadow: 0 4px 20px rgba(0, 0, 0, 0.08);
+    .ag-secao { margin-bottom: 22px; }
+    .ag-secao-titulo { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin: 0 0 10px; }
+    .ag-secao-titulo h2 { font-size: 1.1rem; font-weight: 700; margin: 0; display: flex; align-items: center; gap: 8px; }
+    .ag-dia-titulo { font-size: .9rem; font-weight: 700; margin: 16px 0 8px; display: flex; align-items: center; gap: 8px; color: var(--bs-secondary-color); }
+    .ag-dia-titulo::after { content: ""; flex: 1; height: 1px; background: var(--bs-border-color); }
+    .ag-vazio { text-align: center; color: var(--bs-secondary-color); padding: 32px 12px; }
+    .ag-vazio i { font-size: 2.4rem; opacity: .4; display: block; margin-bottom: 10px; }
+
+    /* Card do evento */
+    .ag-card { background: var(--bs-body-bg); border: 1px solid var(--bs-border-color); border-left: 4px solid var(--bs-primary);
+        border-radius: 14px; margin-bottom: 10px; box-shadow: 0 1px 4px rgba(0,0,0,.04); }
+    .ag-card.ag-concluido { border-left-color: var(--bs-success); }
+    .ag-card.ag-reagendar { border-left-color: var(--bs-warning); }
+    .ag-card.ag-conflito { border-left-color: var(--bs-warning); }
+    .ag-card[open] { box-shadow: 0 6px 20px rgba(0,0,0,.08); }
+    .ag-resumo { list-style: none; cursor: pointer; display: grid; grid-template-columns: auto minmax(0, 1fr) auto; gap: 14px;
+        align-items: center; padding: 12px 14px; border-radius: 14px; }
+    .ag-resumo::-webkit-details-marker { display: none; }
+    .ag-resumo:hover { background: var(--bs-tertiary-bg); }
+    .ag-resumo:focus-visible { outline: 3px solid var(--bs-primary); outline-offset: -3px; }
+    .ag-hora { text-align: center; min-width: 62px; padding: 6px 8px; border-radius: 10px; background: var(--bs-primary-bg-subtle);
+        color: var(--bs-primary-text-emphasis); line-height: 1.15; }
+    .ag-hora strong { display: block; font-size: 1.05rem; }
+    .ag-hora small, .ag-hora .ag-data { display: block; font-size: .68rem; }
+    .ag-hora .ag-data { font-weight: 700; }
+    .ag-cliente { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .ag-tipo { font-weight: 400; color: var(--bs-secondary-color); font-size: .85rem; }
+    .ag-itens, .ag-local { font-size: .8rem; color: var(--bs-secondary-color); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .ag-itens { color: var(--bs-body-color); }
+    .ag-selos { display: flex; flex-direction: column; align-items: flex-end; gap: 4px; }
+    .ag-selos .badge { font-weight: 600; }
+    .ag-badge-saldo { background: var(--bs-warning-bg-subtle); color: var(--bs-warning-text-emphasis); }
+    .ag-badge-quitado { background: var(--bs-success-bg-subtle); color: var(--bs-success-text-emphasis); }
+    .ag-seta { color: var(--bs-secondary-color); transition: transform .2s; font-size: .8rem; }
+    .ag-card[open] .ag-seta { transform: rotate(180deg); }
+    @media (max-width: 575.98px) {
+        .ag-resumo { grid-template-columns: auto minmax(0, 1fr); }
+        .ag-selos { grid-column: 1 / -1; flex-direction: row; flex-wrap: wrap; align-items: center; }
+        .ag-seta { margin-left: auto; }
     }
 
-    .section-header {
-        display: flex;
-        justify-content: space-between;
-        align-items: center;
-        margin-bottom: 20px;
-        padding-bottom: 16px;
-        border-bottom: 2px solid #e2e8f0;
-    }
+    .ag-detalhes { border-top: 1px solid var(--bs-border-color); padding: 14px; }
+    .ag-detalhes h6 { font-size: .74rem; text-transform: uppercase; letter-spacing: .04em; color: var(--bs-secondary-color); margin: 0 0 6px; }
+    .ag-blocos { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; }
+    @media (max-width: 767.98px) { .ag-blocos { grid-template-columns: 1fr; } }
+    .ag-blocos section { background: var(--bs-tertiary-bg); border-radius: 12px; padding: 12px; }
+    .ag-valor { display: flex; justify-content: space-between; font-size: .88rem; padding: 2px 0; }
+    .ag-lista-itens, .ag-obs { margin-top: 12px; }
+    .ag-lista-itens ul { list-style: none; padding: 0; margin: 0; display: flex; flex-wrap: wrap; gap: 6px; }
+    .ag-lista-itens li { background: var(--bs-tertiary-bg); border-radius: 999px; padding: 3px 10px; font-size: .84rem; }
+    .ag-obs { font-size: .88rem; background: var(--bs-warning-bg-subtle); border-radius: 12px; padding: 10px 12px; }
+    .ag-acoes { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 14px; padding-top: 12px; border-top: 1px dashed var(--bs-border-color); }
 
-    .section-title {
-        color: var(--primary);
-        font-weight: 700;
-        font-size: 1.3rem;
-        display: flex;
-        align-items: center;
-        gap: 10px;
-    }
-
-    .section-badge {
-        padding: 4px 12px;
-        border-radius: 20px;
-        font-size: 0.85rem;
-        font-weight: 600;
-    }
-
-    /* Empty State Melhorado */
-    .empty-state-modern {
-        text-align: center;
-        padding: 60px 20px;
-        color: #64748b;
-    }
-
-    .empty-state-modern i {
-        font-size: 4rem;
-        margin-bottom: 20px;
-        color: #cbd5e1;
-        opacity: 0.7;
-    }
-
-    .empty-state-modern h4 {
-        color: #475569;
-        margin-bottom: 12px;
-        font-weight: 600;
-    }
-
-    .empty-state-modern p {
-        color: #94a3b8;
-        margin-bottom: 20px;
-    }
-
-    /* Responsividade */
-    @media (max-width: 1024px) {
-        .agendamento-grid {
-            grid-template-columns: 1fr;
-        }
-        
-        .calendar-sidebar {
-            position: static;
-            margin-bottom: 24px;
-        }
-    }
-
-    @media (max-width: 768px) {
-        .agendamento-details,
-        .agendamento-financeiro {
-            grid-template-columns: 1fr;
-        }
-        
-        .agendamento-header {
-            flex-direction: column;
-            align-items: stretch;
-        }
-        
-        .filtros-grid {
-            grid-template-columns: 1fr;
-        }
-        
-        .agendamento-actions {
-            justify-content: center;
-        }
-    }
-
-    /* Animações */
-    @keyframes slideIn {
-        from {
-            opacity: 0;
-            transform: translateY(20px);
-        }
-        to {
-            opacity: 1;
-            transform: translateY(0);
-        }
-    }
-
-    .agendamento-card {
-        animation: slideIn 0.3s ease-out;
-    }
-
-    /* Scroll personalizado */
-    .agendamentos-list {
-        max-height: 600px;
-        overflow-y: auto;
-        scrollbar-width: thin;
-        scrollbar-color: var(--primary) #f1f5f9;
-    }
-
-    .agendamentos-list::-webkit-scrollbar {
-        width: 6px;
-    }
-
-    .agendamentos-list::-webkit-scrollbar-track {
-        background: #f1f5f9;
-        border-radius: 3px;
-    }
-
-    .agendamentos-list::-webkit-scrollbar-thumb {
-        background: var(--primary);
-        border-radius: 3px;
-    }
+    /* Para concluir / concluídos: lista compacta */
+    .ag-linha { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; padding: 9px 0; border-bottom: 1px solid var(--bs-border-color); }
+    .ag-linha:last-child { border-bottom: 0; }
+    .ag-linha .quem { flex: 1; min-width: 180px; }
+    .ag-linha .quem small { display: block; color: var(--bs-secondary-color); }
 </style>
 {% endblock %}
 
 {% block content %}
 <div class="container-fluid py-4">
-    <div class="row">
-        <div class="col-12">
-            <!-- Header Moderno -->
-            <div class="d-flex flex-wrap justify-content-between align-items-center gap-3 mb-4">
-                <div>
-                    <h1 class="h2 mb-1">
-                        <i class="fas fa-calendar-alt me-2"></i>Agendamentos
-                    </h1>
-                    <p class="text-muted mb-0">Gerencie todos os eventos e compromissos</p>
-                </div>
-                <div class="d-flex flex-wrap gap-2">
-                    <a href="{% url 'orcamentos:novo_orcamento' %}" class="btn btn-primary">
-                        <i class="fas fa-plus me-2"></i>Novo Agendamento
-                    </a>
-                    <a href="{% url 'orcamentos:resumo_festas' %}" class="btn btn-outline-danger">
-                        <i class="fas fa-file-pdf me-2"></i>Resumo de Festas
-                    </a>
-                    {% if sem_sinal_count %}
-                    <a href="{% url 'orcamentos:lista_orcamentos' %}?status=confirmado&pagamento=sem&quando=futuros&sort=evento" class="btn btn-danger"
-                       title="Eventos confirmados de hoje em diante sem nenhum pagamento registrado">
-                        <i class="fas fa-hand-holding-usd me-2"></i>Sem sinal ({{ sem_sinal_count }})
-                    </a>
-                    {% endif %}
-                    <a href="{% url 'orcamentos:disponibilidade_dia' %}{% if data_filter %}?data={{ data_filter }}{% endif %}" class="btn btn-outline-primary"
-                       title="Brinquedos locados e livres no dia">
-                        <i class="fas fa-boxes me-2"></i>Disponibilidade
-                    </a>
-                    <a href="{% url 'orcamentos:conflitos_agenda' %}" class="btn {% if conflitos_count %}btn-warning{% else %}btn-outline-secondary{% endif %}"
-                       title="Eventos com horários que se cruzam ou com menos de 1h de intervalo (próximos 60 dias)">
-                        <i class="fas fa-exclamation-triangle me-2"></i>Conflitos{% if conflitos_count %} ({{ conflitos_count }}){% endif %}
-                    </a>
-                    {% if envio_em_andamento %}
-                    <form method="post" action="{% url 'cancelar_envio_eventos' %}" class="d-inline"
-                          onsubmit="return confirm('Cancelar os envios que ainda não saíram?\n\nAs mensagens já enviadas não são desfeitas.')">
-                        {% csrf_token %}
-                        <button type="submit" class="btn btn-danger" {% if envio_em_andamento.cancelando %}disabled{% endif %}>
-                            <i class="fas fa-stop-circle me-2"></i>
-                            {% if envio_em_andamento.cancelando %}Cancelando...{% else %}Cancelar Envios{% endif %}
-                            ({{ envio_em_andamento.enviados }}/{{ envio_em_andamento.total }} enviados)
-                        </button>
-                    </form>
-                    {% elif eventos_em_aberto_count %}
-                    <form method="post" action="{% url 'enviar_atualizacao_eventos' %}" class="d-inline"
-                          onsubmit="return confirm('Enviar o orçamento e a mensagem de \'já estamos preparando tudo\' para {{ eventos_em_aberto_count }} evento(s) em aberto?\n\nQuem já pagou algum valor recebe o recibo no mesmo PDF e o aviso de nota fiscal.\n\nOs envios saem um a cada {{ intervalo_envio_eventos }} segundos, em segundo plano.')">
-                        {% csrf_token %}
-                        <button type="submit" class="btn btn-success">
-                            <i class="fab fa-whatsapp me-2"></i>Enviar Atualização ({{ eventos_em_aberto_count }})
-                        </button>
-                    </form>
-                    {% endif %}
-                    <a href="{% url 'orcamentos:lista_orcamentos' %}" class="btn btn-outline-secondary">
-                        <i class="fas fa-arrow-left me-2"></i>Voltar
-                    </a>
-                </div>
-            </div>
+    <!-- Cabeçalho -->
+    <div class="d-flex flex-wrap justify-content-between align-items-center gap-3 mb-3">
+        <div>
+            <h1 class="h2 mb-1"><i class="fas fa-calendar-alt me-2"></i>Agendamentos</h1>
+            <p class="text-muted mb-0">Toque em um evento para ver os detalhes.</p>
         </div>
-    </div>
-
-    <div class="agendamento-grid">
-        <!-- Sidebar de Calendário -->
-        <div class="calendar-sidebar">
-            <div class="calendar-header">
-                <h5 class="mb-2">Calendário</h5>
-                <p class="text-muted small">Selecione uma data para filtrar</p>
-            </div>
-            
-            <div class="calendar-nav">
-                <a href="?mes={{ mes_anterior|date:'Y-m' }}" class="btn btn-sm btn-outline-secondary">
-                    <i class="fas fa-chevron-left"></i>
-                </a>
-                <span class="fw-bold">{{ mes_atual }}</span>
-                <a href="?mes={{ mes_proximo|date:'Y-m' }}" class="btn btn-sm btn-outline-secondary">
-                    <i class="fas fa-chevron-right"></i>
-                </a>
-            </div>
-            
-            <div class="calendar-grid">
-                <div class="calendar-weekday">Dom</div>
-                <div class="calendar-weekday">Seg</div>
-                <div class="calendar-weekday">Ter</div>
-                <div class="calendar-weekday">Qua</div>
-                <div class="calendar-weekday">Qui</div>
-                <div class="calendar-weekday">Sex</div>
-                <div class="calendar-weekday">Sáb</div>
-                
-                <!-- Dias do calendário -->
-                {% for dia in dias_calendario %}
-                <div class="calendar-day
-                    {% if dia.hoje %}current{% endif %}
-                    {% if dia.selecionado %}selected{% endif %}
-                    {% if dia.eventos %}has-events{% endif %}
-                    {% if not dia.mes_atual %}text-muted{% endif %}"
-                    {% if dia.mes_atual %}data-date="{{ dia.data }}"{% endif %}>
-                    {{ dia.dia }}
-                </div>
-                {% endfor %}
-            </div>
-            
-            <div class="mt-3">
-                <div class="d-flex align-items-center mb-2">
-                    <div class="calendar-day current me-2"></div>
-                    <span class="small">Hoje</span>
-                </div>
-                <div class="d-flex align-items-center">
-                    <div class="calendar-day has-events me-2"></div>
-                    <span class="small">Com eventos</span>
-                </div>
-            </div>
-        </div>
-
-        <!-- Conteúdo Principal -->
-        <div class="agendamento-content">
-            <!-- Filtros Modernos -->
-            <div class="filtros-modernos">
-                <div class="filtros-header">
-                    <h5 class="mb-0">
-                        <i class="fas fa-filter me-2"></i>Filtros
-                    </h5>
-                    <a href="{% url 'orcamentos:agendamentos' %}" class="btn btn-sm btn-outline-secondary">
-                        <i class="fas fa-sync me-1"></i>Limpar
-                    </a>
-                </div>
-                
-                <div class="filtros-grid">
-                    <div class="filter-group">
-                        <label class="filter-label">Data</label>
-                        <input type="date" class="form-control" name="data" value="{{ data_filter }}"
-                            onchange="location = '?data=' + this.value;" >
-                    </div>
-
-                    <div class="filter-group">
-                        <label class="filter-label">Período</label>
-                        <select class="form-select" name="periodo" onchange="location = this.value;">
-                            <option value="">Selecionar período</option>
-                            <option value="?periodo=hoje" {% if periodo_filter == 'hoje' %}selected{% endif %}>Hoje</option>
-                            <option value="?periodo=semana" {% if periodo_filter == 'semana' %}selected{% endif %}>Esta semana</option>
-                            <option value="?periodo=mes" {% if periodo_filter == 'mes' %}selected{% endif %}>Este mês</option>
-                            <option value="?periodo=proxima_semana" {% if periodo_filter == 'proxima_semana' %}selected{% endif %}>Próxima semana</option>
-                            <option value="?" >Todos os agendamentos</option>
-                        </select>
-                    </div>                    
-                    
-                </div>
-            </div>
-
-            {% if orcamentos_para_concluir %}
-            <!-- Orçamentos para concluir -->
-            <div class="section-moderna mb-4">
-                <div class="section-header">
-                    <h3 class="section-title">
-                        <i class="fas fa-exclamation-triangle text-danger"></i>
-                        Orçamentos para Concluir
-                    </h3>
-                    <span class="section-badge bg-danger">
-                        {{ orcamentos_para_concluir|length }} pendente(s)
-                    </span>
-                </div>
-                
-                <div class="agendamentos-list">
-                    {% for agendamento in orcamentos_para_concluir %}
-                    <div class="agendamento-card hoje urgente">
-                        <div class="agendamento-header">
-                            <div class="d-flex align-items-center gap-3">
-                                <div class="agendamento-time">
-                                    {{ agendamento.hora_evento|time:"H:i" }}
-                                </div>
-                                <div>
-                                    <h5 class="mb-1">{{ agendamento.tipo_evento }}</h5>
-                                    <div class="agendamento-cliente">
-                                        <div class="cliente-avatar">
-                                            {{ agendamento.cliente.nome|slice:":1"|upper }}
-                                        </div>
-                                        <span>{{ agendamento.cliente.nome }}</span>
-                                    </div>
-                                </div>
-                            </div>
-                            <span class="agendamento-status status-pendente">
-                                <i class="fas fa-clock me-1"></i>
-                                Pendente
-                            </span>
-                            </div>
-                        <div class="agendamento-content">
-                            <!-- Botões de Ação -->
-                            <div class="agendamento-actions">
-                                <a href="{% url 'orcamentos:detalhes_orcamento' agendamento.id %}" class="btn btn-action btn-outline-primary">
-                                    <i class="fas fa-eye me-1"></i>Ver Detalhes
-                                </a>
-                                <a href="{% url 'orcamentos:editar_orcamento' agendamento.id %}" class="btn btn-action btn-outline-secondary">
-                                    <i class="fas fa-edit me-1"></i>Editar
-                                </a>
-                                {% if agendamento.saldo > 0 %}
-                                <button type="button" class="btn btn-action btn-outline-success"
-                                        data-bs-toggle="modal" data-bs-target="#modalPagamento"
-                                        data-url="{% url 'orcamentos:registrar_pagamento' agendamento.id %}"
-                                        data-orcamento="{{ agendamento.id }}" data-cliente="{{ agendamento.cliente.nome }}"
-                                        data-total="{{ agendamento.total|stringformat:'.2f' }}" data-pago="{{ agendamento.valor_pago|stringformat:'.2f' }}">
-                                    <i class="fas fa-hand-holding-usd me-1"></i>Pagamento
-                                </button>
-                                {% endif %}
-                                <form action="{% url 'orcamentos:concluir_agendamento' agendamento.id %}" method="POST" style="display: inline;">
-                                    {% csrf_token %}
-                                    <button type="submit" class="btn btn-action btn-outline-success">
-                                        <i class="fas fa-check me-1"></i>Concluir
-                                    </button>
-                                </form>
-                                <form action="{% url 'orcamentos:reabrir_agendamento' agendamento.id %}" method="POST" style="display: inline;">
-                                    {% csrf_token %}
-                                    <button type="submit" class="btn btn-action btn-outline-warning">
-                                        <i class="fas fa-redo me-1"></i>Reabrir
-                                    </button>
-                                </form>
-                                <form action="{% url 'orcamentos:alterar_status' agendamento.id %}" method="POST" style="display: inline;">
-                                    {% csrf_token %}
-                                    <input type="hidden" name="status" value="cancelado">
-                                    <input type="hidden" name="next" value="agendamentos">
-                                    <button type="submit" class="btn btn-action btn-outline-danger"
-                                            onclick="return confirm('Cancelar este evento?')">
-                                        <i class="fas fa-ban me-1"></i>Cancelar
-                                    </button>
-                                </form>
-                            </div>
-                    </div>
-                    {% endfor %}
-                </div>
-            </div>
-            {% endif %}
-
-            <!-- Seção de Hoje -->
-            {% if agendamentos_hoje %}
-            <div class="section-moderna">
-                <div class="section-header">
-                    <h3 class="section-title">
-                        <i class="fas fa-sun text-warning"></i>
-                        Hoje ({{ hoje|date:"d/m/Y" }})
-                    </h3>
-                    <span class="section-badge bg-success">
-                        {{ agendamentos_hoje|length }} evento(s)
-                    </span>
-                </div>
-                
-                <div class="agendamentos-list">
-                    {% for agendamento in agendamentos_hoje %}
-                    <div class="agendamento-card hoje {% if agendamento.saldo > 0 %}urgente{% endif %}">
-                        <div class="agendamento-header">
-                            <div class="d-flex align-items-center gap-3">
-                                <div class="agendamento-time">
-                                    {{ agendamento.hora_evento|time:"H:i" }}
-                                </div>
-                                <div>
-                                    <h5 class="mb-1">{{ agendamento.tipo_evento }}</h5>
-                                    <div class="agendamento-cliente">
-                                        <div class="cliente-avatar">
-                                            {{ agendamento.cliente.nome|slice:":1"|upper }}
-                                        </div>
-                                        <span>{{ agendamento.cliente.nome }}</span>
-                                    </div>
-                                </div>
-                            </div>
-                            <span class="agendamento-status 
-                                {% if agendamento.status == 'confirmado' %}status-confirmado
-                                {% elif agendamento.status == 'concluido' %}status-concluido
-                                {% else %}status-pendente{% endif %}">
-                                {{ agendamento.get_status_display }}
-                            </span>
-                            {% if agendamento.status == 'confirmado' and not agendamento.valor_pago %}<span class="badge bg-danger mt-1" title="Confirmado sem nenhum pagamento registrado"><i class="fas fa-exclamation-circle me-1"></i>Sem sinal</span>{% endif %}
-                    </div>
-                    {% endfor %}
-                </div>
-            </div>
-            {% endif %}
-
-            <!-- Próximos Agendamentos -->
-            <div class="section-moderna">
-                <div class="section-header">
-                    <h3 class="section-title">
-                        <i class="fas fa-calendar text-primary"></i>
-                        Próximos Agendamentos
-                    </h3>
-                    <span class="section-badge bg-primary">
-                        {{ proximos_agendamentos|length }} evento(s)
-                    </span>
-                </div>
-                
-                {% if proximos_agendamentos %}
-                <div class="agendamentos-list">
-                    {% for agendamento in proximos_agendamentos %}
-                    <div class="agendamento-card hoje {% if agendamento.saldo > 0 %}urgente{% endif %}">
-                        <div class="agendamento-header">
-                            <div class="d-flex align-items-center gap-3">
-                                <div class="agendamento-time">
-                                    {{ agendamento.hora_evento|time:"H:i" }}
-                                </div>
-                                <div>
-                                    <h5 class="mb-1">{{ agendamento.tipo_evento }}</h5>
-                                    <div class="agendamento-cliente">
-                                        <div class="cliente-avatar">
-                                            {{ agendamento.cliente.nome|slice:":1"|upper }}
-                                        </div>
-                                        <span>{{ agendamento.cliente.nome }}</span>
-                                    </div>
-                                </div>
-                            </div>
-                            <div class="d-flex flex-column align-items-end">
-                                <span class="agendamento-status 
-                                    {% if agendamento.status == 'confirmado' %}status-confirmado
-                                    {% elif agendamento.status == 'concluido' %}status-concluido
-                                    {% else %}status-pendente{% endif %}">
-                                    <i class="fas 
-                                        {% if agendamento.status == 'confirmado' %}fa-check-circle
-                                        {% elif agendamento.status == 'concluido' %}fa-check-double
-                                        {% else %}fa-clock{% endif %} me-1">
-                                    </i>
-                                    {{ agendamento.get_status_display }}
-                                </span>
-                                {% if agendamento.status == 'confirmado' and not agendamento.valor_pago %}<span class="badge bg-danger mt-1" title="Confirmado sem nenhum pagamento registrado"><i class="fas fa-exclamation-circle me-1"></i>Sem sinal</span>{% endif %}
-                                <!-- Dias restantes -->
-                                <small class="text-muted mt-1">
-                                    {% with dias_restantes=agendamento.dias_para_evento %}
-                                        {% if dias_restantes > 0 %}
-                                            Em {{ dias_restantes }} dia{{ dias_restantes|pluralize }}
-                                        {% elif dias_restantes == 0 %}
-                                            Hoje
-                                        {% else %}
-                                            Há {{ dias_restantes }} dia{{ dias_restantes }}
-                                        {% endif %}
-                                    {% endwith %}
-                                </small>
-                            </div>
-                        </div>
-
-                        <div class="agendamento-content">
-                            <!-- Informações do Evento -->
-                            <div class="agendamento-details">
-                                <div class="detail-item">
-                                    <span class="detail-label">
-                                        <i class="fas fa-phone me-1"></i>Telefone
-                                    </span>
-                                    <span class="detail-value">{{ agendamento.cliente.telefone }}</span>
-                                </div>
-                                
-                                <div class="detail-item">
-                                    <span class="detail-label">
-                                        <i class="fas fa-clock me-1"></i>Duração
-                                    </span>
-                                    <span class="detail-value">{{ agendamento.periodo_evento }} hora{{ agendamento.periodo_evento|pluralize }}</span>
-                                </div>
-                                
-                                <div class="detail-item">
-                                    <span class="detail-label">
-                                        <i class="fas fa-map-marker-alt me-1"></i>Local
-                                    </span>
-                                    <span class="detail-value">{{ agendamento.endereco|truncatewords:5 }}</span>
-                                </div>
-                                
-                                <div class="detail-item">
-                                    <span class="detail-label">
-                                        <i class="fas fa-sticky-note me-1"></i>Observações
-                                    </span>
-                                    <span class="detail-value">
-                                        {% if agendamento.observacoes %}
-                                            {{ agendamento.observacoes|truncatewords:8 }}
-                                        {% else %}
-                                            <span class="text-muted">Nenhuma observação</span>
-                                        {% endif %}
-                                    </span>
-                                </div>
-
-                                <div class="detail-item">
-                                    <span class="detail-label">
-                                        <i class="fas fa-users me-1"></i>Data do Evento
-                                    </span>
-                                    <span class="detail-value">
-                                        {{ agendamento.data_evento|date:"d/m/Y" }}
-                                    </span>
-                                </div>
-
-                                <div class='detail-item'>
-                                    <span class="detail-label">
-                                        <i class="fas fa-clock me-1"></i>Hora do Evento
-                                    </span>
-                                    <span class="detail-value">
-                                        {{ agendamento.hora_evento|time:"H:i" }}
-                                    </span>
-                                </div>
-                            </div>
-
-                            <!-- Informações Financeiras -->
-                            <div class="agendamento-financeiro">
-                                <div class="financeiro-item">
-                                    <span class="financeiro-label">Valor Total</span>
-                                    <span class="financeiro-value">R$ {{ agendamento.total|floatformat:2 }}</span>
-                                </div>
-                                
-                                <div class="financeiro-item">
-                                    <span class="financeiro-label">Valor Pago</span>
-                                    <span class="financeiro-value text-success">R$ {{ agendamento.valor_pago|floatformat:2 }}</span>
-                                </div>
-                                
-                                <div class="financeiro-item">
-                                    <span class="financeiro-label">Saldo</span>
-                                    <span class="financeiro-value {% if agendamento.saldo > 0 %}saldo-negativo{% else %}text-success{% endif %}">
-                                        R$ {{ agendamento.saldo|floatformat:2 }}
-                                    </span>
-                                </div>
-                            </div>
-                        </div>
-
-                        <!-- Ações -->
-                        <div class="agendamento-actions">
-                            <a href="{% url 'orcamentos:detalhes_orcamento' agendamento.id %}"
-                            class="btn btn-action btn-info">
-                                <i class="fas fa-eye"></i>
-                                Detalhes
-                            </a>
-
-                            <a href="{% url 'orcamentos:gerar_checklist_pdf' agendamento.id %}"
-                            class="btn btn-action btn-outline-primary">
-                                <i class="fas fa-clipboard-check"></i>
-                                Checklist
-                            </a>
-
-                            {% if agendamento.status == 'confirmado' %}
-                            <a href="{% url 'orcamentos:concluir_agendamento' agendamento.id %}" 
-                            class="btn btn-action btn-success">
-                                <i class="fas fa-check-circle"></i>
-                                Concluir
-                            </a>
-                            {% endif %}
-                            
-                            <a href="https://wa.me/55{{ agendamento.cliente.telefone|cut:' '|cut:'('|cut:')'|cut:'-'|cut:'+' }}" 
-                            target="_blank" class="btn btn-action btn-warning">
-                                <i class="fab fa-whatsapp"></i>
-                                WhatsApp
-                            </a>
-                            
-                            {% if agendamento.status == 'concluido' %}
-                            <form method="post" action="{% url 'orcamentos:reabrir_agendamento' agendamento.id %}" 
-                                class="d-inline">
-                                {% csrf_token %}
-                                <button type="submit" class="btn btn-action btn-outline-secondary" 
-                                        onclick="return confirm('Reabrir este agendamento?')">
-                                    <i class="fas fa-undo"></i>
-                                    Reabrir
-                                </button>
-                            </form>
-                            {% endif %}
-                            
-                            <a href="{% url 'orcamentos:editar_orcamento' agendamento.id %}"
-                            class="btn btn-action btn-outline-primary">
-                                <i class="fas fa-edit"></i>
-                                Editar
-                            </a>
-
-                            {% if agendamento.saldo > 0 %}
-                            <button type="button" class="btn btn-action btn-outline-success"
-                                    data-bs-toggle="modal" data-bs-target="#modalPagamento"
-                                    data-url="{% url 'orcamentos:registrar_pagamento' agendamento.id %}"
-                                    data-orcamento="{{ agendamento.id }}" data-cliente="{{ agendamento.cliente.nome }}"
-                                    data-total="{{ agendamento.total|stringformat:'.2f' }}" data-pago="{{ agendamento.valor_pago|stringformat:'.2f' }}">
-                                <i class="fas fa-hand-holding-usd"></i>
-                                Pagamento
-                            </button>
-                            {% endif %}
-
-                            {% if agendamento.status == 'confirmado' or agendamento.status == 'reagendar' %}
-                            <form method="post" action="{% url 'orcamentos:alterar_status' agendamento.id %}"
-                                class="d-inline">
-                                {% csrf_token %}
-                                <input type="hidden" name="status" value="cancelado">
-                                <input type="hidden" name="next" value="agendamentos">
-                                <button type="submit" class="btn btn-action btn-outline-danger"
-                                        onclick="return confirm('Cancelar este evento?')">
-                                    <i class="fas fa-ban"></i>
-                                    Cancelar
-                                </button>
-                            </form>
-                            {% endif %}
-                        </div>
-                    </div>
-                    {% empty %}
-                    <div class="empty-state-modern">
-                        <i class="fas fa-calendar-check"></i>
-                        <h4>Nenhum agendamento para hoje</h4>
-                        <p>Não há eventos agendados para o dia de hoje.</p>
-                        <a href="{% url 'orcamentos:novo_orcamento' %}" class="btn btn-primary">
-                            <i class="fas fa-plus me-2"></i>Criar Novo Agendamento
-                        </a>
-                    </div>
-                    {% endfor %}
-                </div>
-                {% else %}
-                <div class="empty-state-modern">
-                    <i class="fas fa-calendar-plus"></i>
-                    <h4>Nenhum agendamento encontrado</h4>
-                    <p>Não há agendamentos confirmados para este período.</p>
-                    <a href="{% url 'orcamentos:novo_orcamento' %}" class="btn btn-primary">
-                        <i class="fas fa-plus me-2"></i>Criar Primeiro Agendamento
-                    </a>
-                </div>
-                {% endif %}
-            </div>
-
-            <!-- Concluídos -->
-            {% if agendamentos_concluidos %}
-            <div class="section-moderna">
-                <div class="section-header">
-                    <h3 class="section-title">
-                        <i class="fas fa-check-circle text-success"></i>
-                        Concluídos Recentemente
-                    </h3>
-                    <span class="section-badge bg-secondary">
-                        {{ agendamentos_concluidos|length }} evento(s)
-                    </span>
-                </div>
-                
-                <div class="agendamentos-list">
-    {% for agendamento in agendamentos_concluidos %}
-    <div class="agendamento-card concluido">
-        <div class="agendamento-header">
-            <div class="d-flex align-items-center gap-3">
-                <div class="agendamento-time">
-                    {{ agendamento.data_evento|date:"d/m" }}<br>
-                    <small>{{ agendamento.hora_evento|time:"H:i" }}</small>
-                </div>
-                <div>
-                    <h5 class="mb-1">{{ agendamento.tipo_evento }}</h5>
-                    <div class="agendamento-cliente">
-                        <div class="cliente-avatar">
-                            {{ agendamento.cliente.nome|slice:":1"|upper }}
-                        </div>
-                        <span>{{ agendamento.cliente.nome }}</span>
-                    </div>
-                </div>
-            </div>
-            <span class="agendamento-status status-concluido">
-                <i class="fas fa-check-double me-1"></i>Concluído
-            </span>
-        </div> <!-- Fechamento da div agendamento-header -->
-
-        <div class="agendamento-content">
-            <!-- Informações do Evento -->
-            <div class="agendamento-details">
-                <div class="detail-item">
-                    <span class="detail-label">
-                        <i class="fas fa-phone me-1"></i>Telefone
-                    </span>
-                    <span class="detail-value">{{ agendamento.cliente.telefone }}</span>
-                </div>
-                
-                <div class="detail-item">
-                    <span class="detail-label">
-                        <i class="fas fa-clock me-1"></i>Duração
-                    </span>
-                    <span class="detail-value">{{ agendamento.periodo_evento }} hora{{ agendamento.periodo_evento|pluralize }}</span>
-                </div>
-                
-                <div class="detail-item">
-                    <span class="detail-label">
-                        <i class="fas fa-map-marker-alt me-1"></i>Local
-                    </span>
-                    <span class="detail-value">{{ agendamento.endereco|truncatewords:5 }}</span>
-                </div>
-                
-                <div class="detail-item">
-                    <span class="detail-label">
-                        <i class="fas fa-check-circle me-1"></i>Concluído em
-                    </span>
-                    <span class="detail-value">
-                        {% if agendamento.data_conclusao %}
-                            {{ agendamento.data_conclusao|date:"d/m/Y H:i" }}
-                        {% else %}
-                            <span class="text-muted">Data não informada</span>
-                        {% endif %}
-                    </span>
-                </div>
-            </div>
-
-            <!-- Informações Financeiras -->
-            <div class="agendamento-financeiro">
-                <div class="financeiro-item">
-                    <span class="financeiro-label">Valor Total</span>
-                    <span class="financeiro-value">R$ {{ agendamento.total|floatformat:2 }}</span>
-                </div>
-                
-                <div class="financeiro-item">
-                    <span class="financeiro-label">Valor Pago</span>
-                    <span class="financeiro-value text-success">R$ {{ agendamento.valor_pago|floatformat:2 }}</span>
-                </div>
-                
-                <div class="financeiro-item">
-                    <span class="financeiro-label">Status Pagamento</span>
-                    <span class="financeiro-value {% if agendamento.saldo > 0 %}text-warning{% else %}text-success{% endif %}">
-                        {% if agendamento.saldo > 0 %}
-                            Pendente: R$ {{ agendamento.saldo|floatformat:2 }}
-                        {% else %}
-                            Quitado
-                        {% endif %}
-                    </span>
-                </div>
-            </div>
-        </div>
-
-        <!-- Ações -->
-        <div class="agendamento-actions">
-            <a href="{% url 'orcamentos:detalhes_orcamento' agendamento.id %}" 
-               class="btn btn-action btn-outline-info">
-                <i class="fas fa-eye me-1"></i>Detalhes
+        <div class="d-flex flex-wrap gap-2">
+            <a href="{% url 'orcamentos:novo_orcamento' %}" class="btn btn-primary"><i class="fas fa-plus me-2"></i>Novo</a>
+            <a href="{% url 'orcamentos:disponibilidade_dia' %}{% if data_filter %}?data={{ data_filter }}{% endif %}" class="btn btn-outline-primary"
+               title="Brinquedos locados e livres no dia"><i class="fas fa-boxes me-2"></i>Disponibilidade</a>
+            <a href="{% url 'orcamentos:resumo_festas' %}" class="btn btn-outline-secondary"><i class="fas fa-file-pdf me-2"></i>Resumo de festas</a>
+            <a href="{% url 'orcamentos:conflitos_agenda' %}" class="btn {% if conflitos_count %}btn-warning{% else %}btn-outline-secondary{% endif %}"
+               title="Eventos com horários que se cruzam ou com menos de 1h de intervalo (próximos 60 dias)">
+                <i class="fas fa-exclamation-triangle me-2"></i>Conflitos{% if conflitos_count %} ({{ conflitos_count }}){% endif %}
             </a>
-            
-            <form method="post" action="{% url 'orcamentos:reabrir_agendamento' agendamento.id %}" 
-                  class="d-inline">
+            {% if envio_em_andamento %}
+            <form method="post" action="{% url 'cancelar_envio_eventos' %}" class="d-inline"
+                  onsubmit="return confirm('Cancelar os envios que ainda não saíram?\n\nAs mensagens já enviadas não são desfeitas.')">
                 {% csrf_token %}
-                <button type="submit" class="btn btn-action btn-outline-secondary" 
-                        onclick="return confirm('Reabrir este agendamento?')">
-                    <i class="fas fa-undo me-1"></i>Reabrir
+                <button type="submit" class="btn btn-danger" {% if envio_em_andamento.cancelando %}disabled{% endif %}>
+                    <i class="fas fa-stop-circle me-2"></i>
+                    {% if envio_em_andamento.cancelando %}Cancelando...{% else %}Cancelar envios{% endif %}
+                    ({{ envio_em_andamento.enviados }}/{{ envio_em_andamento.total }} enviados)
                 </button>
             </form>
-            
-            <a href="https://wa.me/55{{ agendamento.cliente.telefone|cut:' '|cut:'('|cut:')'|cut:'-'|cut:'+' }}" 
-               target="_blank" class="btn btn-action btn-outline-warning">
-                <i class="fab fa-whatsapp me-1"></i>WhatsApp
-            </a>
-            
-            <a href="{% url 'orcamentos:editar_orcamento' agendamento.id %}" 
-               class="btn btn-action btn-outline-primary">
-                <i class="fas fa-edit me-1"></i>Editar
-            </a>
-        </div>
-    </div>
-    
-    {% empty %}
-    <div class="empty-state-modern">
-        <i class="fas fa-history"></i>
-        <h4>Nenhum agendamento concluído</h4>
-        <p>Não há eventos concluídos recentemente.</p>
-    </div>
-    {% endfor %}
-</div>
-            </div>
+            {% elif eventos_em_aberto_count %}
+            <form method="post" action="{% url 'enviar_atualizacao_eventos' %}" class="d-inline"
+                  onsubmit="return confirm('Enviar o orçamento e a mensagem de \'já estamos preparando tudo\' para {{ eventos_em_aberto_count }} evento(s) em aberto?\n\nQuem já pagou algum valor recebe o recibo no mesmo PDF e o aviso de nota fiscal.\n\nOs envios saem um a cada {{ intervalo_envio_eventos }} segundos, em segundo plano.')">
+                {% csrf_token %}
+                <button type="submit" class="btn btn-success"><i class="fab fa-whatsapp me-2"></i>Enviar atualização ({{ eventos_em_aberto_count }})</button>
+            </form>
             {% endif %}
         </div>
+    </div>
+
+    <!-- Números -->
+    <div class="ag-kpis">
+        <a class="ag-kpi" href="?periodo=hoje"><small>Festas hoje</small><strong>{{ kpi_hoje }}</strong></a>
+        <a class="ag-kpi" href="?periodo=semana"><small>Próximos 7 dias</small><strong>{{ kpi_semana }}</strong></a>
+        <div class="ag-kpi"><small>A receber (confirmados)</small><strong>R$ {{ kpi_a_receber|floatformat:"0g" }}</strong></div>
+        <a class="ag-kpi{% if sem_sinal_count %} alerta{% endif %}" href="{% url 'orcamentos:lista_orcamentos' %}?status=confirmado&pagamento=sem&quando=futuros&sort=evento"
+           title="Eventos confirmados de hoje em diante sem nenhum pagamento registrado">
+            <small>Sem sinal</small><strong>{{ sem_sinal_count }}</strong>
+        </a>
+    </div>
+
+    <div class="ag-layout">
+        <!-- Calendário -->
+        <aside class="ag-painel ag-calendario" aria-label="Calendário">
+            <div class="cal-nav">
+                <a href="?mes={{ mes_anterior|date:'Y-m' }}" class="btn btn-sm btn-outline-secondary" aria-label="Mês anterior"><i class="fas fa-chevron-left"></i></a>
+                <strong>{{ mes_atual|date:"F Y" }}</strong>
+                <a href="?mes={{ mes_proximo|date:'Y-m' }}" class="btn btn-sm btn-outline-secondary" aria-label="Próximo mês"><i class="fas fa-chevron-right"></i></a>
+            </div>
+            <div class="cal-grade">
+                {% for nome in "DSTQQSS" %}<div class="cal-semana">{{ nome }}</div>{% endfor %}
+                {% for dia in dias_calendario %}
+                <a class="cal-dia{% if not dia.mes_atual %} fora{% endif %}{% if dia.hoje %} hoje{% endif %}{% if dia.selecionado %} selecionado{% endif %}"
+                   href="?data={{ dia.data }}" aria-label="{{ dia.data }}{% if dia.eventos %}: {{ dia.eventos }} evento{{ dia.eventos|pluralize }}{% endif %}">
+                    {{ dia.dia }}{% if dia.eventos %}<span class="qtd">{{ dia.eventos }}</span>{% endif %}
+                </a>
+                {% endfor %}
+            </div>
+            <div class="ag-periodos">
+                <a href="?" class="btn btn-sm {% if not periodo_filter and not data_filter %}btn-primary{% else %}btn-outline-secondary{% endif %}">Próximos 30 dias</a>
+                <a href="?periodo=hoje" class="btn btn-sm {% if periodo_filter == 'hoje' %}btn-primary{% else %}btn-outline-secondary{% endif %}">Hoje</a>
+                <a href="?periodo=semana" class="btn btn-sm {% if periodo_filter == 'semana' %}btn-primary{% else %}btn-outline-secondary{% endif %}">Esta semana</a>
+                <a href="?periodo=proxima_semana" class="btn btn-sm {% if periodo_filter == 'proxima_semana' %}btn-primary{% else %}btn-outline-secondary{% endif %}">Próxima semana</a>
+                <a href="?periodo=mes" class="btn btn-sm {% if periodo_filter == 'mes' %}btn-primary{% else %}btn-outline-secondary{% endif %}">Este mês</a>
+            </div>
+            <label class="form-label small mt-3 mb-1" for="irParaData">Ir para a data</label>
+            <input type="date" class="form-control form-control-sm" id="irParaData" value="{{ data_filter }}" onchange="if (this.value) location = '?data=' + this.value;">
+        </aside>
+
+        <main>
+            {% if orcamentos_para_concluir %}
+            <section class="ag-secao ag-painel border-danger-subtle">
+                <div class="ag-secao-titulo">
+                    <h2 class="text-danger"><i class="fas fa-exclamation-triangle"></i>Para concluir</h2>
+                    <span class="badge text-bg-danger">{{ orcamentos_para_concluir|length }}</span>
+                </div>
+                <p class="small text-body-secondary mb-2">Eventos confirmados que já passaram e ainda não foram concluídos.</p>
+                {% for o in orcamentos_para_concluir %}
+                <div class="ag-linha">
+                    <div class="quem">
+                        <a href="{% url 'orcamentos:detalhes_orcamento' o.id %}" class="fw-semibold">{{ o.cliente.nome }}</a>
+                        <small>{{ o.data_evento|date:"d/m/Y" }} às {{ o.hora_evento|time:"H:i" }} · {{ o.tipo_evento }}{% if o.saldo > 0 %} · saldo R$ {{ o.saldo|floatformat:"2g" }}{% endif %}</small>
+                    </div>
+                    <div class="d-flex flex-wrap gap-2">
+                        {% if o.saldo > 0 %}
+                        <button type="button" class="btn btn-sm btn-outline-success" data-bs-toggle="modal" data-bs-target="#modalPagamento"
+                                data-url="{% url 'orcamentos:registrar_pagamento' o.id %}" data-orcamento="{{ o.id }}" data-cliente="{{ o.cliente.nome }}"
+                                data-total="{{ o.total|stringformat:'.2f' }}" data-pago="{{ o.valor_pago|stringformat:'.2f' }}">
+                            <i class="fas fa-hand-holding-usd me-1"></i>Pagamento
+                        </button>
+                        {% endif %}
+                        <form action="{% url 'orcamentos:concluir_agendamento' o.id %}" method="post" class="d-inline">
+                            {% csrf_token %}
+                            <button type="submit" class="btn btn-sm btn-success" title="Marca como concluído e quitado"><i class="fas fa-check me-1"></i>Concluir</button>
+                        </form>
+                        <form action="{% url 'orcamentos:alterar_status' o.id %}" method="post" class="d-inline">
+                            {% csrf_token %}
+                            <input type="hidden" name="status" value="cancelado">
+                            <input type="hidden" name="next" value="agendamentos">
+                            <button type="submit" class="btn btn-sm btn-outline-danger" onclick="return confirm('Cancelar este evento?')"><i class="fas fa-ban"></i></button>
+                        </form>
+                    </div>
+                </div>
+                {% endfor %}
+            </section>
+            {% endif %}
+
+            {% if data_selecionada %}
+            <!-- Dia escolhido no calendário -->
+            <section class="ag-secao">
+                <div class="ag-secao-titulo">
+                    <h2><i class="fas fa-calendar-day text-primary"></i>{{ data_selecionada|date:"l, d/m/Y" }}{% if data_selecionada == hoje %} (hoje){% endif %}</h2>
+                    <a href="?" class="btn btn-sm btn-outline-secondary">Ver próximos</a>
+                </div>
+                {% for o in eventos_do_dia %}
+                {% include "orcamentos/_agendamento_card.html" with o=o aberto=True %}
+                {% empty %}
+                <div class="ag-painel ag-vazio"><i class="fas fa-calendar-check"></i>Nenhum evento neste dia.</div>
+                {% endfor %}
+            </section>
+            {% else %}
+
+            <!-- Hoje -->
+            <section class="ag-secao">
+                <div class="ag-secao-titulo">
+                    <h2><i class="fas fa-sun text-warning"></i>Hoje <small class="text-body-secondary fw-normal">{{ hoje|date:"l, d/m" }}</small></h2>
+                    {% if agendamentos_hoje %}<span class="badge text-bg-success">{{ agendamentos_hoje|length }} evento{{ agendamentos_hoje|length|pluralize }}</span>{% endif %}
+                </div>
+                {% for o in agendamentos_hoje %}
+                {% include "orcamentos/_agendamento_card.html" with o=o aberto=True %}
+                {% empty %}
+                <div class="ag-painel ag-vazio py-3"><i class="fas fa-mug-hot"></i>Nenhum evento hoje.</div>
+                {% endfor %}
+            </section>
+
+            <!-- Próximos, agrupados por dia -->
+            {% if periodo_filter != 'hoje' %}
+            <section class="ag-secao">
+                <div class="ag-secao-titulo">
+                    <h2><i class="fas fa-calendar text-primary"></i>
+                        {% if periodo_filter == 'semana' %}Esta semana{% elif periodo_filter == 'proxima_semana' %}Próxima semana{% elif periodo_filter == 'mes' %}Este mês{% else %}Próximos 30 dias{% endif %}
+                    </h2>
+                    <div class="d-flex align-items-center gap-2">
+                        {% if qtd_proximos %}
+                        <button type="button" class="btn btn-sm btn-link text-decoration-none" data-alternar-todos>Abrir todos</button>
+                        <span class="badge text-bg-primary">{{ qtd_proximos }} evento{{ qtd_proximos|pluralize }}</span>
+                        {% endif %}
+                    </div>
+                </div>
+                {% for dia, eventos in dias_agenda %}
+                <div class="ag-dia-titulo">
+                    {% if dia == amanha %}Amanhã · {% endif %}{{ dia|date:"l, d/m" }} · {{ eventos|length }} evento{{ eventos|length|pluralize }}
+                </div>
+                {% for o in eventos %}
+                {% include "orcamentos/_agendamento_card.html" with o=o aberto=False %}
+                {% endfor %}
+                {% empty %}
+                <div class="ag-painel ag-vazio">
+                    <i class="fas fa-calendar-plus"></i>
+                    Nenhum evento confirmado neste período.
+                    <div class="mt-2"><a href="{% url 'orcamentos:novo_orcamento' %}" class="btn btn-sm btn-primary"><i class="fas fa-plus me-1"></i>Novo orçamento</a></div>
+                </div>
+                {% endfor %}
+            </section>
+            {% endif %}
+            {% endif %}
+
+            <!-- Concluídos recentes (recolhido) -->
+            {% if agendamentos_concluidos %}
+            <details class="ag-secao ag-painel">
+                <summary class="fw-semibold" style="cursor: pointer;">
+                    <i class="fas fa-check-circle text-success me-1"></i>Concluídos nos últimos 30 dias
+                    <span class="badge text-bg-secondary ms-1">{{ agendamentos_concluidos|length }}</span>
+                </summary>
+                <div class="mt-2">
+                    {% for o in agendamentos_concluidos %}
+                    <div class="ag-linha">
+                        <div class="quem">
+                            <a href="{% url 'orcamentos:detalhes_orcamento' o.id %}" class="fw-semibold">{{ o.cliente.nome }}</a>
+                            <small>{{ o.data_evento|date:"d/m/Y" }} às {{ o.hora_evento|time:"H:i" }} · {{ o.tipo_evento }} · R$ {{ o.total|floatformat:"2g" }}
+                                {% if o.saldo > 0 %}<span class="text-danger">· falta R$ {{ o.saldo|floatformat:"2g" }}</span>{% else %}<span class="text-success">· quitado</span>{% endif %}</small>
+                        </div>
+                        <form method="post" action="{% url 'orcamentos:reabrir_agendamento' o.id %}" class="d-inline">
+                            {% csrf_token %}
+                            <button type="submit" class="btn btn-sm btn-outline-secondary" onclick="return confirm('Reabrir este agendamento?')"><i class="fas fa-undo me-1"></i>Reabrir</button>
+                        </form>
+                    </div>
+                    {% endfor %}
+                </div>
+            </details>
+            {% endif %}
+        </main>
     </div>
 </div>
 
 <script>
-    // Scripts para interatividade do calendário e filtros
-    document.addEventListener('DOMContentLoaded', function() {
-        // Clique nos dias do calendário
-        const calendarDays = document.querySelectorAll('.calendar-day[data-date]');
-        calendarDays.forEach(day => {
-            day.addEventListener('click', function() {
-                const date = this.getAttribute('data-date');
-                const params = new URLSearchParams(window.location.search);
-                params.set('data', date);
-                params.delete('periodo');
-                window.location.href = '?' + params.toString();
-            });
-        });
-
-        // Estilo de hover para dias clicáveis
-        calendarDays.forEach(day => {
-            day.style.cursor = 'pointer';
-            day.addEventListener('mouseenter', function() {
-                this.style.background = '#f1f5f9';
-            });
-            day.addEventListener('mouseleave', function() {
-                if (!this.classList.contains('current')) {
-                    this.style.background = '';
-                }
-            });
-        });
-
-        // Animação de cards
-        const cards = document.querySelectorAll('.agendamento-card');
-        cards.forEach((card, index) => {
-            card.style.animationDelay = `${index * 0.1}s`;
+    // "Abrir todos" / "Fechar todos" nos próximos eventos
+    document.querySelectorAll('[data-alternar-todos]').forEach(function (botao) {
+        botao.addEventListener('click', function () {
+            const cards = botao.closest('.ag-secao').querySelectorAll('details.ag-card');
+            const abrir = [...cards].some((c) => !c.open);
+            cards.forEach((c) => { c.open = abrir; });
+            botao.textContent = abrir ? 'Fechar todos' : 'Abrir todos';
         });
     });
 </script>
