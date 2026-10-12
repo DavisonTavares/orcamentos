@@ -1,0 +1,24 @@
+{% extends "base.html" %}
+
+{% block title %}Excluir item - Mundo Kids{% endblock %}
+
+{% block content %}
+<div class="container py-4" style="max-width: 560px;">
+    <h1 class="h3 mb-3"><i class="fas fa-trash text-danger me-2"></i>Excluir item</h1>
+    <div class="card border-0 shadow-sm">
+        <div class="card-body">
+            <p class="mb-2">Tem certeza que deseja excluir <strong>{{ item.nome|default:item.descricao }}</strong>?</p>
+            <p class="small text-body-secondary mb-3">
+                Esta ação não pode ser desfeita. Itens que já aparecem em orçamentos não podem ser excluídos —
+                nesse caso, desmarque "Disponível" na edição do item.
+            </p>
+            <form method="post" class="d-flex flex-wrap gap-2">
+                {% csrf_token %}
+                <input type="hidden" name="confirmar" value="sim">
+                <button type="submit" class="btn btn-danger"><i class="fas fa-trash me-1"></i>Excluir item</button>
+                <a href="{% url 'orcamentos:lista_itens' %}" class="btn btn-outline-secondary">Cancelar</a>
+            </form>
+        </div>
+    </div>
+</div>
+{% endblock %}

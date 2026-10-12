@@ -417,6 +417,7 @@
                 </button>
                 <form method="post" action="{% url 'orcamentos:excluir_item' item.id %}" style="display: inline;">
                     {% csrf_token %}
+                    <input type="hidden" name="confirmar" value="sim">
                     <button type="submit" class="btn btn-danger">
                         <i class="fas fa-trash me-2"></i>Excluir Item
                     </button>

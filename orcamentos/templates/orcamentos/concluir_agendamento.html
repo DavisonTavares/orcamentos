@@ -1,0 +1,49 @@
+{% extends "base.html" %}
+
+{% block title %}Concluir evento #{{ orcamento.id }} - Mundo Kids{% endblock %}
+
+{% block content %}
+<div class="container py-4" style="max-width: 640px;">
+    <h1 class="h3 mb-3"><i class="fas fa-check-circle text-success me-2"></i>Concluir evento</h1>
+
+    <div class="card border-0 shadow-sm mb-3">
+        <div class="card-body">
+            <div class="d-flex justify-content-between flex-wrap gap-2">
+                <div>
+                    <div class="fw-semibold">{{ orcamento.cliente.nome }}</div>
+                    <div class="small text-body-secondary">
+                        #{{ orcamento.id }} · {{ orcamento.tipo_evento }} ·
+                        {{ orcamento.data_evento|date:"d/m/Y" }} às {{ orcamento.hora_evento|time:"H:i" }}
+                    </div>
+                </div>
+                <div class="text-end small">
+                    <div>Total: <strong>R$ {{ orcamento.total|floatformat:"2g" }}</strong></div>
+                    <div>Pago: R$ {{ orcamento.valor_pago|floatformat:"2g" }}</div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    {% if orcamento.saldo > 0 %}
+    <div class="alert alert-warning small">
+        <i class="fas fa-exclamation-triangle me-1"></i>
+        Ao concluir, o evento fica <strong>quitado</strong>: o saldo de <strong>R$ {{ orcamento.saldo|floatformat:"2g" }}</strong>
+        será registrado como pago. Se o cliente ainda não pagou tudo, registre o pagamento real antes.
+    </div>
+    {% endif %}
+
+    <form method="post">
+        {% csrf_token %}
+        <div class="mb-3">
+            <label for="observacoes_conclusao" class="form-label">Observações da conclusão <span class="text-body-secondary small">(opcional)</span></label>
+            <textarea class="form-control" id="observacoes_conclusao" name="observacoes_conclusao" rows="3"
+                      placeholder="Ex.: tudo certo, cliente pediu para voltar no próximo aniversário"></textarea>
+            <div class="form-text">Ficam salvas nas observações do orçamento. O cliente recebe a mensagem de evento concluído pelo WhatsApp.</div>
+        </div>
+        <div class="d-flex flex-wrap gap-2">
+            <button type="submit" class="btn btn-success"><i class="fas fa-check me-1"></i>Concluir evento</button>
+            <a href="{% url 'orcamentos:agendamentos' %}" class="btn btn-outline-secondary">Voltar</a>
+        </div>
+    </form>
+</div>
+{% endblock %}
